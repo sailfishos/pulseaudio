@@ -105,7 +105,7 @@ to manage the devices in PulseAudio.
 
 
 %prep
-%setup -q -n %{name}-%{version}
+%setup -q -n %{name}-%{version}/pulseaudio
 
 # 0001-build-Install-pulsecore-headers.patch
 %patch0 -p1
