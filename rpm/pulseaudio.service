@@ -1,0 +1,11 @@
+[Unit]
+Description=PulseAudio
+After=xorg.service pre-user-session.target
+Requires=dbus.socket
+
+[Service]
+Type=forking
+PIDFile=%t/pulse/pid
+ExecStart=/usr/bin/start-pulseaudio
+Restart=always
+RestartSec=1

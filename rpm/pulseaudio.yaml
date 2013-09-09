@@ -1,0 +1,96 @@
+Name: pulseaudio
+Summary: General purpose sound server
+Version: 4.0
+Release: 1
+Group: Multimedia/PulseAudio
+License: LGPLv2+
+URL: http://pulseaudio.org
+RunFdupes:
+    - "%{_datadir}"
+    - "%{_includedir}"
+Sources:
+    - http://freedesktop.org/software/pulseaudio/releases/pulseaudio-%{version}.tar.xz
+    - 90-pulse.conf
+    - pulseaudio.service
+
+Patches:
+    - 0001-build-Install-pulsecore-headers.patch
+    - 0002-Use-etc-boardname-to-load-a-hardware-specific-config.patch
+    - 0003-daemon-Disable-automatic-shutdown-by-default.patch
+    - 0004-daemon-Set-the-default-resampler-to-ffmpeg.patch
+
+Description: |
+    PulseAudio is a layer between audio devices and applications. It removes
+    the need for applications to care about the details of the hardware.
+    PulseAudio is responsible for:
+     * automatically converting the audio format between applications and sound
+       devices
+     * mixing audio streams, which allows multiple applications to use the same
+       sound device at the same time
+     * handling device and application volumes
+     * routing audio to the right place without requiring applications to care
+       about the routing
+     * providing an unified view of all audio devices, regardless of whether
+       they are ALSA-supported sound cards, Bluetooth headsets, remote sound
+       cards in the local network or anything else
+     * and more...
+
+Requires:
+    - udev
+    - libsbc >= 1.0
+
+PkgConfigBR:
+    - alsa >= 1.0.24
+    - bluez >= 4.99
+    - dbus-1 >= 1.4.12
+    - glib-2.0 >= 2.4.0
+    - ice
+    - json >= 0.9
+    - libasyncns >= 0.1
+    - libsystemd-daemon
+    - libsystemd-login
+    - libudev >= 143
+    - orc-0.4 >= 0.4.11
+    - sm
+    - sndfile >= 1.0.20
+    - speexdsp >= 1.2
+    - x11-xcb
+    - xcb >= 1.6
+    - xtst
+    - atomic_ops
+    - sbc >= 1.0
+
+PkgBR:
+    - intltool
+    - libcap-devel
+    - libtool >= 2.4
+    - libtool-ltdl-devel
+
+Configure: reconfigure
+ConfigOptions:
+    - --disable-neon-opt
+SubPackages:
+    - Name: module-x11
+      Summary: PulseAudio components needed for starting x11 User session
+      Description: "Description: %{summary}"
+      Group: Multimedia/PulseAudio
+      Requires:
+          - /bin/sed
+
+    - Name: devel
+      Summary: PulseAudio Development headers and libraries
+      Description: "Description: %{summary}"
+      Group: Development/Libraries
+
+    - Name: esound
+      Summary: ESound compatibility
+      Description: Makes PulseAudio a drop-in replacement for ESound.
+      Group: Multimedia/PulseAudio
+
+    - Name: kde
+      Summary: KDE specific configuration for PulseAudio
+      Description: |
+        Loads module-device-manager automatically at user session
+        initialization time. module-device-manager makes it possible for Phonon
+        to manage the devices in PulseAudio.
+      Group: Multimedia/PulseAudio
