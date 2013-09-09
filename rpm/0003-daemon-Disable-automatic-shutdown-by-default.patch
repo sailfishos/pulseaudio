@@ -1,0 +1,35 @@
+From 4c4e2e6c01190cfc8e81b586febbc4fa7abe8a26 Mon Sep 17 00:00:00 2001
+From: Tanu Kaskinen <tanu.kaskinen@jollamobile.com>
+Date: Wed, 10 Oct 2012 11:17:04 +0300
+Subject: [PATCH 3/5] daemon: Disable automatic shutdown by default.
+
+Mer (or rather Nemo) specific patch, not upstreamable.
+---
+ src/daemon/daemon.conf.in | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/src/daemon/daemon.conf.in b/src/daemon/daemon.conf.in
+index dff97ae..dcf9020 100644
+--- a/src/daemon/daemon.conf.in
++++ b/src/daemon/daemon.conf.in
+@@ -41,6 +41,17 @@ ifelse(@HAVE_DBUS@, 1, [dnl
+ ; realtime-priority = 5
+ 
+ ; exit-idle-time = 20
++
++# exit-idle-time is enabled by default in upstream, because it makes
++# console logins work nicely (the daemon is not left around forever
++# after logout). Graphical sessions are expected to somehow disable
++# the automatic shutdown for the duration of the session, but at least
++# Nemo doesn't currently do that, and since console logins are not
++# that important, we can disable the automatic shutdown here. With
++# systemd user sessions it should be possible to handle this properly,
++# so this change should be eventually dropped.
++exit-idle-time = -1
++
+ ; scache-idle-time = 20
+ 
+ ; dl-search-path = (depends on architecture)
+-- 
+1.8.4
+

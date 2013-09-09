@@ -1,0 +1,36 @@
+From 13c171528b22759bc9d0b80e3d5766a7081f168a Mon Sep 17 00:00:00 2001
+From: Tanu Kaskinen <tanu.kaskinen@jollamobile.com>
+Date: Wed, 10 Oct 2012 13:01:01 +0300
+Subject: [PATCH 4/5] daemon: Set the default resampler to ffmpeg.
+
+---
+ src/daemon/daemon.conf.in | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/src/daemon/daemon.conf.in b/src/daemon/daemon.conf.in
+index dcf9020..b8dac29 100644
+--- a/src/daemon/daemon.conf.in
++++ b/src/daemon/daemon.conf.in
+@@ -66,6 +66,19 @@ exit-idle-time = -1
+ ; log-backtrace = 0
+ 
+ ; resample-method = speex-float-3
++
++# speex-float-3 is arguably too heavy resampler to be the default.
++# Ubuntu, for example, patches this to speex-float-2. Mer is targeted
++# at mobile devices, and speex-float-2 may still be a bit too heavy
++# for that purpose. Ideally the default resampler would be decided by
++# hardware adaptations, but for now we patch this in Mer.
++#
++# Why ffmpeg, why not e.g. speex-fixed-1? I don't know, I'm not aware
++# of the history of that decision. If you think something else would
++# be better, feel free to change this (and document the rationale
++# here).
++resample-method = ffmpeg
++
+ ; enable-remixing = yes
+ ; enable-lfe-remixing = no
+ 
+-- 
+1.8.4
+
