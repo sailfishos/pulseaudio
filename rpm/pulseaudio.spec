@@ -120,6 +120,7 @@ to manage the devices in PulseAudio.
 
 %build
 # >> build pre
+echo "%{version}" > .tarball-version
 NOCONFIGURE=1 ./bootstrap.sh
 # << build pre
 
