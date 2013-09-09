@@ -66,9 +66,10 @@ PkgBR:
     - libtool >= 2.4
     - libtool-ltdl-devel
 
-Configure: reconfigure
+Configure: configure
 ConfigOptions:
     - --disable-neon-opt
+SetupOptions: -q -n %{name}-%{version}/pulseaudio
 SubPackages:
     - Name: module-x11
       Summary: PulseAudio components needed for starting x11 User session
