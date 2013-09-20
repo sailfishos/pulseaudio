@@ -1,21 +1,21 @@
-From 13c171528b22759bc9d0b80e3d5766a7081f168a Mon Sep 17 00:00:00 2001
-From: Tanu Kaskinen <tanu.kaskinen@jollamobile.com>
-Date: Wed, 10 Oct 2012 13:01:01 +0300
-Subject: [PATCH 4/5] daemon: Set the default resampler to ffmpeg.
+From 5f18446e97ce54301f75a17ad01cac5b1c57acfe Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
+ <juho.hamalainen@tieto.com>
+Date: Fri, 20 Sep 2013 14:02:40 +0300
+Subject: [PATCH 4/5] daemon: Set default resampler to speex-fixed-2.
 
 ---
- src/daemon/daemon.conf.in | 13 +++++++++++++
- 1 file changed, 13 insertions(+)
+ src/daemon/daemon.conf.in | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
 
 diff --git a/src/daemon/daemon.conf.in b/src/daemon/daemon.conf.in
-index dcf9020..b8dac29 100644
+index dcf9020..731dab2 100644
 --- a/src/daemon/daemon.conf.in
 +++ b/src/daemon/daemon.conf.in
-@@ -66,6 +66,19 @@ exit-idle-time = -1
+@@ -65,6 +65,23 @@ exit-idle-time = -1
+ ; log-time = no
  ; log-backtrace = 0
  
- ; resample-method = speex-float-3
-+
 +# speex-float-3 is arguably too heavy resampler to be the default.
 +# Ubuntu, for example, patches this to speex-float-2. Mer is targeted
 +# at mobile devices, and speex-float-2 may still be a bit too heavy
@@ -26,11 +26,16 @@ index dcf9020..b8dac29 100644
 +# of the history of that decision. If you think something else would
 +# be better, feel free to change this (and document the rationale
 +# here).
-+resample-method = ffmpeg
++#
++# Changed from ffmpeg to speex-fixed-2 due to ffmpeg producing broken
++# audio data in some cases (mono samples). No good other rationale
++# for choosing the resampling method as of yet. Benchmarking different
++# resamplers would be a good starting point to decide properly.
++resample-method = speex-fixed-2
 +
+ ; resample-method = speex-float-3
  ; enable-remixing = yes
  ; enable-lfe-remixing = no
- 
 -- 
 1.8.4
 
