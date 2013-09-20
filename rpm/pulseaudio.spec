@@ -6,6 +6,7 @@
 Name:       pulseaudio
 
 # >> macros
+%define pulseversion 4.0
 # << macros
 
 Summary:    General purpose sound server
@@ -21,7 +22,8 @@ Source100:  pulseaudio.yaml
 Patch0:     0001-build-Install-pulsecore-headers.patch
 Patch1:     0002-Use-etc-boardname-to-load-a-hardware-specific-config.patch
 Patch2:     0003-daemon-Disable-automatic-shutdown-by-default.patch
-Patch3:     0004-daemon-Set-the-default-resampler-to-ffmpeg.patch
+Patch3:     0004-daemon-Set-default-resampler-to-speex-fixed-2.patch
+Patch4:     0005-bluetooth-Allow-leaving-transport-running-while-sink.patch
 Requires:   udev
 Requires:   libsbc >= 1.0
 Requires(post): /sbin/ldconfig
@@ -113,8 +115,10 @@ to manage the devices in PulseAudio.
 %patch1 -p1
 # 0003-daemon-Disable-automatic-shutdown-by-default.patch
 %patch2 -p1
-# 0004-daemon-Set-the-default-resampler-to-ffmpeg.patch
+# 0004-daemon-Set-default-resampler-to-speex-fixed-2.patch
 %patch3 -p1
+# 0005-bluetooth-Allow-leaving-transport-running-while-sink.patch
+%patch4 -p1
 # >> setup
 # << setup
 
@@ -185,82 +189,82 @@ cp -a %{SOURCE2} %{buildroot}/usr/lib/systemd/user
 %{_bindir}/pulseaudio
 %{_bindir}/start-pulseaudio
 %{_libdir}/*.so.*
-%{_libdir}/libpulsecore-%{version}.so
-%{_libdir}/pulse-%{version}/modules/libalsa-util.so
-%{_libdir}/pulse-%{version}/modules/libbluetooth-util.so
-%{_libdir}/pulse-%{version}/modules/libcli.so
-%{_libdir}/pulse-%{version}/modules/liboss-util.so
-%{_libdir}/pulse-%{version}/modules/libprotocol-cli.so
-%{_libdir}/pulse-%{version}/modules/libprotocol-http.so
-%{_libdir}/pulse-%{version}/modules/libprotocol-native.so
-%{_libdir}/pulse-%{version}/modules/libprotocol-simple.so
-%{_libdir}/pulse-%{version}/modules/librtp.so
-%{_libdir}/pulse-%{version}/modules/module-alsa-card.so
-%{_libdir}/pulse-%{version}/modules/module-alsa-sink.so
-%{_libdir}/pulse-%{version}/modules/module-alsa-source.so
-%{_libdir}/pulse-%{version}/modules/module-always-sink.so
-%{_libdir}/pulse-%{version}/modules/module-augment-properties.so
-%{_libdir}/pulse-%{version}/modules/module-bluetooth-device.so
-%{_libdir}/pulse-%{version}/modules/module-bluetooth-discover.so
-%{_libdir}/pulse-%{version}/modules/module-bluetooth-proximity.so
-%{_libdir}/pulse-%{version}/modules/module-bluetooth-policy.so
-%{_libdir}/pulse-%{version}/modules/module-card-restore.so
-%{_libdir}/pulse-%{version}/modules/module-cli-protocol-tcp.so
-%{_libdir}/pulse-%{version}/modules/module-cli-protocol-unix.so
-%{_libdir}/pulse-%{version}/modules/module-cli.so
-%{_libdir}/pulse-%{version}/modules/module-combine-sink.so
-%{_libdir}/pulse-%{version}/modules/module-combine.so
-%{_libdir}/pulse-%{version}/modules/module-console-kit.so
-%{_libdir}/pulse-%{version}/modules/module-dbus-protocol.so
-%{_libdir}/pulse-%{version}/modules/module-default-device-restore.so
-%{_libdir}/pulse-%{version}/modules/module-detect.so
-%{_libdir}/pulse-%{version}/modules/module-device-manager.so
-%{_libdir}/pulse-%{version}/modules/module-device-restore.so
-%{_libdir}/pulse-%{version}/modules/module-echo-cancel.so
-%{_libdir}/pulse-%{version}/modules/module-esound-sink.so
-%{_libdir}/pulse-%{version}/modules/module-filter-apply.so
-%{_libdir}/pulse-%{version}/modules/module-filter-heuristics.so
-%{_libdir}/pulse-%{version}/modules/module-hal-detect.so
-%{_libdir}/pulse-%{version}/modules/module-http-protocol-tcp.so
-%{_libdir}/pulse-%{version}/modules/module-http-protocol-unix.so
-%{_libdir}/pulse-%{version}/modules/module-intended-roles.so
-%{_libdir}/pulse-%{version}/modules/module-ladspa-sink.so
-%{_libdir}/pulse-%{version}/modules/module-loopback.so
-%{_libdir}/pulse-%{version}/modules/module-match.so
-%{_libdir}/pulse-%{version}/modules/module-mmkbd-evdev.so
-%{_libdir}/pulse-%{version}/modules/module-native-protocol-fd.so
-%{_libdir}/pulse-%{version}/modules/module-native-protocol-tcp.so
-%{_libdir}/pulse-%{version}/modules/module-native-protocol-unix.so
-%{_libdir}/pulse-%{version}/modules/module-null-sink.so
-%{_libdir}/pulse-%{version}/modules/module-null-source.so
-%{_libdir}/pulse-%{version}/modules/module-oss.so
-%{_libdir}/pulse-%{version}/modules/module-pipe-sink.so
-%{_libdir}/pulse-%{version}/modules/module-pipe-source.so
-%{_libdir}/pulse-%{version}/modules/module-position-event-sounds.so
-%{_libdir}/pulse-%{version}/modules/module-remap-sink.so
-%{_libdir}/pulse-%{version}/modules/module-rescue-streams.so
-%{_libdir}/pulse-%{version}/modules/module-role-cork.so
-%{_libdir}/pulse-%{version}/modules/module-rtp-recv.so
-%{_libdir}/pulse-%{version}/modules/module-rtp-send.so
-%{_libdir}/pulse-%{version}/modules/module-rygel-media-server.so
-%{_libdir}/pulse-%{version}/modules/module-simple-protocol-tcp.so
-%{_libdir}/pulse-%{version}/modules/module-simple-protocol-unix.so
-%{_libdir}/pulse-%{version}/modules/module-sine-source.so
-%{_libdir}/pulse-%{version}/modules/module-sine.so
-%{_libdir}/pulse-%{version}/modules/module-stream-restore.so
-%{_libdir}/pulse-%{version}/modules/module-suspend-on-idle.so
-%{_libdir}/pulse-%{version}/modules/module-systemd-login.so
-%{_libdir}/pulse-%{version}/modules/module-switch-on-port-available.so
-%{_libdir}/pulse-%{version}/modules/module-switch-on-connect.so
-%{_libdir}/pulse-%{version}/modules/module-tunnel-sink.so
-%{_libdir}/pulse-%{version}/modules/module-tunnel-source.so
-%{_libdir}/pulse-%{version}/modules/module-udev-detect.so
-%{_libdir}/pulse-%{version}/modules/module-virtual-sink.so
-%{_libdir}/pulse-%{version}/modules/module-virtual-source.so
-%{_libdir}/pulse-%{version}/modules/module-virtual-surround-sink.so
-%{_libdir}/pulse-%{version}/modules/module-volume-restore.so
-%{_libdir}/pulse-%{version}/modules/module-remap-source.so
-%{_libdir}/pulse-%{version}/modules/module-role-ducking.so
+%{_libdir}/libpulsecore-%{pulseversion}.so
+%{_libdir}/pulse-%{pulseversion}/modules/libalsa-util.so
+%{_libdir}/pulse-%{pulseversion}/modules/libbluetooth-util.so
+%{_libdir}/pulse-%{pulseversion}/modules/libcli.so
+%{_libdir}/pulse-%{pulseversion}/modules/liboss-util.so
+%{_libdir}/pulse-%{pulseversion}/modules/libprotocol-cli.so
+%{_libdir}/pulse-%{pulseversion}/modules/libprotocol-http.so
+%{_libdir}/pulse-%{pulseversion}/modules/libprotocol-native.so
+%{_libdir}/pulse-%{pulseversion}/modules/libprotocol-simple.so
+%{_libdir}/pulse-%{pulseversion}/modules/librtp.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-alsa-card.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-alsa-sink.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-alsa-source.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-always-sink.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-augment-properties.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-bluetooth-device.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-bluetooth-discover.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-bluetooth-proximity.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-bluetooth-policy.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-card-restore.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-cli-protocol-tcp.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-cli-protocol-unix.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-cli.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-combine-sink.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-combine.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-console-kit.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-dbus-protocol.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-default-device-restore.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-detect.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-device-manager.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-device-restore.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-echo-cancel.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-esound-sink.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-filter-apply.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-filter-heuristics.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-hal-detect.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-http-protocol-tcp.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-http-protocol-unix.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-intended-roles.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-ladspa-sink.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-loopback.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-match.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-mmkbd-evdev.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-native-protocol-fd.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-native-protocol-tcp.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-native-protocol-unix.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-null-sink.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-null-source.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-oss.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-pipe-sink.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-pipe-source.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-position-event-sounds.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-remap-sink.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-rescue-streams.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-role-cork.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-rtp-recv.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-rtp-send.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-rygel-media-server.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-simple-protocol-tcp.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-simple-protocol-unix.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-sine-source.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-sine.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-stream-restore.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-suspend-on-idle.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-systemd-login.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-switch-on-port-available.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-switch-on-connect.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-tunnel-sink.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-tunnel-source.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-udev-detect.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-virtual-sink.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-virtual-source.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-virtual-surround-sink.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-volume-restore.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-remap-source.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-role-ducking.so
 %{_libdir}/pulseaudio/*.so
 %{_libexecdir}/pulse/proximity-helper
 %{_datadir}/pulseaudio/alsa-mixer/paths/*.conf
@@ -276,10 +280,10 @@ cp -a %{SOURCE2} %{buildroot}/usr/lib/systemd/user
 %config %{_sysconfdir}/xdg/autostart/pulseaudio.desktop
 %{_bindir}/pax11publish
 %{_bindir}/start-pulseaudio-x11
-%{_libdir}/pulse-%{version}/modules/module-x11-bell.so
-%{_libdir}/pulse-%{version}/modules/module-x11-cork-request.so
-%{_libdir}/pulse-%{version}/modules/module-x11-publish.so
-%{_libdir}/pulse-%{version}/modules/module-x11-xsmp.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-x11-bell.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-x11-cork-request.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-x11-publish.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-x11-xsmp.so
 # << files module-x11
 
 %files devel
@@ -301,11 +305,11 @@ cp -a %{SOURCE2} %{buildroot}/usr/lib/systemd/user
 # >> files esound
 %doc %{_mandir}/man1/esdcompat.1.gz
 %{_bindir}/esdcompat
-%{_libdir}/pulse-%{version}/modules/libprotocol-esound.so
-%{_libdir}/pulse-%{version}/modules/module-esound-compat-spawnfd.so
-%{_libdir}/pulse-%{version}/modules/module-esound-compat-spawnpid.so
-%{_libdir}/pulse-%{version}/modules/module-esound-protocol-tcp.so
-%{_libdir}/pulse-%{version}/modules/module-esound-protocol-unix.so
+%{_libdir}/pulse-%{pulseversion}/modules/libprotocol-esound.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-esound-compat-spawnfd.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-esound-compat-spawnpid.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-esound-protocol-tcp.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-esound-protocol-unix.so
 # << files esound
 
 %files kde

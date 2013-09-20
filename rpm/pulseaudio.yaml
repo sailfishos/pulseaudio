@@ -17,7 +17,8 @@ Patches:
     - 0001-build-Install-pulsecore-headers.patch
     - 0002-Use-etc-boardname-to-load-a-hardware-specific-config.patch
     - 0003-daemon-Disable-automatic-shutdown-by-default.patch
-    - 0004-daemon-Set-the-default-resampler-to-ffmpeg.patch
+    - 0004-daemon-Set-default-resampler-to-speex-fixed-2.patch
+    - 0005-bluetooth-Allow-leaving-transport-running-while-sink.patch
 
 Description: |
     PulseAudio is a layer between audio devices and applications. It removes
