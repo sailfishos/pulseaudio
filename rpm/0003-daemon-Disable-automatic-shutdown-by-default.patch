@@ -1,7 +1,7 @@
-From 4c4e2e6c01190cfc8e81b586febbc4fa7abe8a26 Mon Sep 17 00:00:00 2001
+From cabedb0a619cd5d928ed62aa03bbdedf236d028f Mon Sep 17 00:00:00 2001
 From: Tanu Kaskinen <tanu.kaskinen@jollamobile.com>
 Date: Wed, 10 Oct 2012 11:17:04 +0300
-Subject: [PATCH 3/5] daemon: Disable automatic shutdown by default.
+Subject: [PATCH 3/6] daemon: Disable automatic shutdown by default.
 
 Mer (or rather Nemo) specific patch, not upstreamable.
 ---

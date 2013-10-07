@@ -24,6 +24,7 @@ Patch1:     0002-Use-etc-boardname-to-load-a-hardware-specific-config.patch
 Patch2:     0003-daemon-Disable-automatic-shutdown-by-default.patch
 Patch3:     0004-daemon-Set-default-resampler-to-speex-fixed-2.patch
 Patch4:     0005-bluetooth-Allow-leaving-transport-running-while-sink.patch
+Patch5:     0006-client-Disable-client-autospawn-by-default.patch
 Requires:   udev
 Requires:   libsbc >= 1.0
 Requires(post): /sbin/ldconfig
@@ -119,6 +120,8 @@ to manage the devices in PulseAudio.
 %patch3 -p1
 # 0005-bluetooth-Allow-leaving-transport-running-while-sink.patch
 %patch4 -p1
+# 0006-client-Disable-client-autospawn-by-default.patch
+%patch5 -p1
 # >> setup
 # << setup
 
