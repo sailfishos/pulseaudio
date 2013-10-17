@@ -1,7 +1,7 @@
-From 88aa3d5b4fcd73eb30b7d838a10ee74fba9873d9 Mon Sep 17 00:00:00 2001
+From 521c96781eb2de517ae5bdfb1601d06c0b6c1ffc Mon Sep 17 00:00:00 2001
 From: Tanu Kaskinen <tanu.kaskinen@jollamobile.com>
 Date: Wed, 10 Oct 2012 11:07:48 +0300
-Subject: [PATCH 2/6] Use /etc/boardname to load a hardware specific
+Subject: [PATCH 2/7] Use /etc/boardname to load a hardware specific
  configuration file.
 
 I think it would be better to add support for /etc/boardname directly
