@@ -20,6 +20,7 @@ Patches:
     - 0004-daemon-Set-default-resampler-to-speex-fixed-2.patch
     - 0005-bluetooth-Allow-leaving-transport-running-while-sink.patch
     - 0006-client-Disable-client-autospawn-by-default.patch
+    - 0007-bluetooth-Do-not-lose-transport-pointer-after-gettin.patch
 
 Description: |
     PulseAudio is a layer between audio devices and applications. It removes
