@@ -153,6 +153,8 @@ install -d %{buildroot}/etc/security/limits.d
 cp -a %{SOURCE1} %{buildroot}/etc/security/limits.d
 install -d %{buildroot}/usr/lib/systemd/user
 cp -a %{SOURCE2} %{buildroot}/usr/lib/systemd/user
+mkdir -p %{buildroot}/usr/lib/systemd/user/user-session.target.wants
+ln -s ../pulseaudio.service %{buildroot}/usr/lib/systemd/user/user-session.target.wants/
 # << install post
 
 %find_lang pulseaudio
