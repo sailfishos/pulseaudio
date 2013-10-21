@@ -184,6 +184,7 @@ ln -s ../pulseaudio.service %{buildroot}/usr/lib/systemd/user/user-session.targe
 %config(noreplace) %{_sysconfdir}/security/limits.d/90-pulse.conf
 %{_sysconfdir}/bash_completion.d/pulseaudio-bash-completion.sh
 %{_libdir}/systemd/user/pulseaudio.service
+%{_libdir}/systemd/user/user-session.target.wants/pulseaudio.service
 /lib/udev/rules.d/90-pulseaudio.rules
 %{_bindir}/pacat
 %{_bindir}/pacmd
