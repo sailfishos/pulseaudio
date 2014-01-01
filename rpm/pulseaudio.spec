@@ -137,13 +137,22 @@ to manage the devices in PulseAudio.
 echo "%{pulseversion}" > .tarball-version
 NOCONFIGURE=1 ./bootstrap.sh
 
+%ifarch %{arm}
+export CFLAGS="$CFLAGS -mfpu=neon"
+export CXXFLAGS="$CXXFLAGS -mfpu=neon"
+%endif
+
 %if %{with X11}
 %configure --disable-static \
-    --disable-neon-opt \
+%ifarch %{arm}
+    --enable-neon-opt \
+%endif
     --disable-gconf
 %else
 %configure --disable-static \
-    --disable-neon-opt \
+%ifarch %{arm}
+    --enable-neon-opt \
+%endif
     --disable-gconf \
     --disable-x11
 %endif
