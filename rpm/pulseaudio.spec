@@ -25,6 +25,7 @@ Patch7:     2007-bluetooth-device-Do-not-lose-transport-pointer-after.patch
 Patch8:     2008-bluetooth-device-Default-to-using-A2DP-profile-initi.patch
 Patch9:     2009-module-rescue-streams-Add-parameters-to-define-targe.patch
 Patch10:    2010-bluetooth-util-Detect-transport-acquire-release-loop.patch
+Patch11:    0101-core-make-dependencies-compile-for-64bit.patch
 Requires:   udev
 Requires:   libsbc >= 1.0
 Requires(post): /sbin/ldconfig
@@ -132,6 +133,8 @@ to manage the devices in PulseAudio.
 %patch9 -p1
 # 2010-bluetooth-util-Detect-transport-acquire-release-loop.patch
 %patch10 -p1
+# 0101-core-make-dependencies-compile-for-64bit.patch
+%patch11 -p1
 
 %build
 echo "%{pulseversion}" > .tarball-version
