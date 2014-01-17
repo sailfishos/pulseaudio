@@ -14,13 +14,17 @@ URL:        http://pulseaudio.org
 Source0:    http://freedesktop.org/software/pulseaudio/releases/pulseaudio-%{version}.tar.xz
 Source1:    90-pulse.conf
 Source2:    pulseaudio.service
-Patch0:     0001-build-Install-pulsecore-headers.patch
-Patch1:     0002-Use-etc-boardname-to-load-a-hardware-specific-config.patch
-Patch2:     0003-daemon-Disable-automatic-shutdown-by-default.patch
-Patch3:     0004-daemon-Set-default-resampler-to-speex-fixed-2.patch
-Patch4:     0005-bluetooth-Allow-leaving-transport-running-while-sink.patch
-Patch5:     0006-client-Disable-client-autospawn-by-default.patch
-Patch6:     0007-bluetooth-Do-not-lose-transport-pointer-after-gettin.patch
+Patch0:     1001-combine-Fix-crash-in-output-freeing.patch
+Patch1:     2001-build-Install-pulsecore-headers.patch
+Patch2:     2002-Use-etc-boardname-to-load-a-hardware-specific-config.patch
+Patch3:     2003-daemon-Disable-automatic-shutdown-by-default.patch
+Patch4:     2004-daemon-Set-default-resampler-to-speex-fixed-2.patch
+Patch5:     2005-bluetooth-Allow-leaving-transport-running-while-sink.patch
+Patch6:     2006-client-Disable-client-autospawn-by-default.patch
+Patch7:     2007-bluetooth-device-Do-not-lose-transport-pointer-after.patch
+Patch8:     2008-bluetooth-device-Default-to-using-A2DP-profile-initi.patch
+Patch9:     2009-module-rescue-streams-Add-parameters-to-define-targe.patch
+Patch10:    2010-bluetooth-util-Detect-transport-acquire-release-loop.patch
 Requires:   udev
 Requires:   libsbc >= 1.0
 Requires(post): /sbin/ldconfig
@@ -106,27 +110,43 @@ to manage the devices in PulseAudio.
 %prep
 %setup -q -n %{name}-%{version}/pulseaudio
 
-# 0001-build-Install-pulsecore-headers.patch
+# 1001-combine-Fix-crash-in-output-freeing.patch
 %patch0 -p1
-# 0002-Use-etc-boardname-to-load-a-hardware-specific-config.patch
+# 2002-Use-etc-boardname-to-load-a-hardware-specific-config.patch
 %patch1 -p1
-# 0003-daemon-Disable-automatic-shutdown-by-default.patch
+# 2003-daemon-Disable-automatic-shutdown-by-default.patch
 %patch2 -p1
-# 0004-daemon-Set-default-resampler-to-speex-fixed-2.patch
+# 2004-daemon-Set-default-resampler-to-speex-fixed-2.patch
 %patch3 -p1
-# 0005-bluetooth-Allow-leaving-transport-running-while-sink.patch
+# 2005-bluetooth-Allow-leaving-transport-running-while-sink.patch
 %patch4 -p1
-# 0006-client-Disable-client-autospawn-by-default.patch
+# 2006-client-Disable-client-autospawn-by-default.patch
 %patch5 -p1
-# 0007-bluetooth-Do-not-lose-transport-pointer-after-gettin.patch
+# 2007-bluetooth-device-Do-not-lose-transport-pointer-after.patch
 %patch6 -p1
+# 2007-bluetooth-device-Do-not-lose-transport-pointer-after.patch
+%patch7 -p1
+# 2008-bluetooth-device-Default-to-using-A2DP-profile-initi.patch
+%patch8 -p1
+# 2009-module-rescue-streams-Add-parameters-to-define-targe.patch
+%patch9 -p1
+# 2010-bluetooth-util-Detect-transport-acquire-release-loop.patch
+%patch10 -p1
 
 %build
 echo "%{pulseversion}" > .tarball-version
 NOCONFIGURE=1 ./bootstrap.sh
 
+%if %{with X11}
 %configure --disable-static \
-    --disable-neon-opt
+    --disable-neon-opt \
+    --disable-gconf
+%else
+%configure --disable-static \
+    --disable-neon-opt \
+    --disable-gconf \
+    --disable-x11
+%endif
 
 make %{?jobs:-j%jobs}
 

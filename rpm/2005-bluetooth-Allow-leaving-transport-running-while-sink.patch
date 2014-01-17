@@ -1,9 +1,9 @@
-From 353961c99098658944d1720d3bb115932d203d20 Mon Sep 17 00:00:00 2001
+From 7016cdfc8124bd88b8f0353d723ecb5ecab7d005 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Wed, 18 Sep 2013 14:13:47 +0300
-Subject: [PATCH 5/7] bluetooth: Allow leaving transport running while sink and
- source are suspended.
+Subject: [PATCH 2005/2010] bluetooth: Allow leaving transport running while
+ sink and source are suspended.
 
 There are some cases where keeping the SCO transport running even when
 SCO sink and source are suspended is needed. This patch allows keeping
@@ -139,5 +139,5 @@ index fd6739d..53a22de 100644
          restore_sco_volume_callbacks(u);
  
 -- 
-1.8.4
+1.8.5.2
 

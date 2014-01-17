@@ -1,9 +1,9 @@
-From a8d624936c48a55799bc719b2f4fd9b25fe64091 Mon Sep 17 00:00:00 2001
+From 3f468de85ecfd773f5fc8479e630826a4e133676 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Wed, 16 Oct 2013 10:54:20 +0300
-Subject: [PATCH 7/7] [bluetooth] Do not lose transport pointer after getting
- it.
+Subject: [PATCH 2007/2010] bluetooth-device: Do not lose transport pointer
+ after getting it.
 
 When u->transport has valid pointer, it seems most code assumes it to
 stay non-NULL. When profile switch fails, stop_thread() clears the
@@ -28,5 +28,5 @@ index 53a22de..04320d3 100644
  
      if (u->sink) {
 -- 
-1.8.4
+1.8.5.2
 
