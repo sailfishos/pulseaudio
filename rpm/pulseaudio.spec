@@ -26,6 +26,7 @@ Patch8:     2008-bluetooth-device-Default-to-using-A2DP-profile-initi.patch
 Patch9:     2009-module-rescue-streams-Add-parameters-to-define-targe.patch
 Patch10:    2010-bluetooth-util-Detect-transport-acquire-release-loop.patch
 Patch11:    0101-core-make-dependencies-compile-for-64bit.patch
+Patch12:    2011-suspend-on-idle-ensure-we-still-time-out-if-a-stream.patch
 Requires:   udev
 Requires:   libsbc >= 1.0
 Requires(post): /sbin/ldconfig
@@ -135,6 +136,8 @@ to manage the devices in PulseAudio.
 %patch10 -p1
 # 0101-core-make-dependencies-compile-for-64bit.patch
 %patch11 -p1
+# 2011-suspend-on-idle-ensure-we-still-time-out-if-a-stream.patch
+%patch12 -p1
 
 %build
 echo "%{pulseversion}" > .tarball-version
