@@ -202,6 +202,8 @@ enum {
 
 #define USE_SCO_OVER_PCM(u) (u->profile == PA_BLUEZ4_PROFILE_HSP && (u->hsp.sco_sink && u->hsp.sco_source))
 
+#define BLUETOOTH_PREFER_HSP "bluetooth.prefer.hsp"
+
 static int init_profile(struct userdata *u);
 
 /* from IO thread */
@@ -2231,6 +2233,22 @@ static void create_card_ports(struct userdata *u, pa_hashmap *ports) {
     pa_device_port_new_data_done(&port_data);
 }
 
+static int check_prefer_hsp(struct userdata *u) {
+    const char *tmp;
+    int prefer_hsp = 0;
+
+    pa_assert(u);
+
+    if (u->hsp.sco_sink) {
+        if ((tmp = pa_proplist_gets(u->hsp.sco_sink->proplist, BLUETOOTH_PREFER_HSP))) {
+            if (pa_streq(tmp, "true"))
+                prefer_hsp = 20;
+        }
+    }
+
+    return prefer_hsp;
+}
+
 /* Run from main thread */
 static pa_card_profile *create_card_profile(struct userdata *u, const char *uuid, pa_hashmap *ports) {
     pa_device_port *input_port, *output_port;
@@ -2244,7 +2262,7 @@ static pa_card_profile *create_card_profile(struct userdata *u, const char *uuid
 
     if (pa_streq(uuid, A2DP_SINK_UUID)) {
         p = pa_card_profile_new("a2dp", _("High Fidelity Playback (A2DP)"), sizeof(pa_bluez4_profile_t));
-        p->priority = 10;
+        p->priority = 20;
         p->n_sinks = 1;
         p->n_sources = 0;
         p->max_sink_channels = 2;
@@ -2255,7 +2273,7 @@ static pa_card_profile *create_card_profile(struct userdata *u, const char *uuid
         *d = PA_BLUEZ4_PROFILE_A2DP;
     } else if (pa_streq(uuid, A2DP_SOURCE_UUID)) {
         p = pa_card_profile_new("a2dp_source", _("High Fidelity Capture (A2DP)"), sizeof(pa_bluez4_profile_t));
-        p->priority = 10;
+        p->priority = 20;
         p->n_sinks = 0;
         p->n_sources = 1;
         p->max_sink_channels = 0;
@@ -2266,7 +2284,7 @@ static pa_card_profile *create_card_profile(struct userdata *u, const char *uuid
         *d = PA_BLUEZ4_PROFILE_A2DP_SOURCE;
     } else if (pa_streq(uuid, HSP_HS_UUID) || pa_streq(uuid, HFP_HS_UUID)) {
         p = pa_card_profile_new("hsp", _("Telephony Duplex (HSP/HFP)"), sizeof(pa_bluez4_profile_t));
-        p->priority = 20;
+        p->priority = 10 + check_prefer_hsp(u);
         p->n_sinks = 1;
         p->n_sources = 1;
         p->max_sink_channels = 1;
@@ -2278,7 +2296,7 @@ static pa_card_profile *create_card_profile(struct userdata *u, const char *uuid
         *d = PA_BLUEZ4_PROFILE_HSP;
     } else if (pa_streq(uuid, HFP_AG_UUID)) {
         p = pa_card_profile_new("hfgw", _("Handsfree Gateway"), sizeof(pa_bluez4_profile_t));
-        p->priority = 20;
+        p->priority = 10 + check_prefer_hsp(u);
         p->n_sinks = 1;
         p->n_sources = 1;
         p->max_sink_channels = 1;
@@ -2387,6 +2405,8 @@ static int add_card(struct userdata *u) {
     u->card->set_profile = card_set_profile;
 
     d = PA_CARD_PROFILE_DATA(u->card->active_profile);
+
+    pa_log_debug("Select initial profile (%s)", *d == PA_BLUEZ4_PROFILE_OFF ? "off" : pa_bluez4_profile_to_string(*d));
 
     if (*d != PA_BLUEZ4_PROFILE_OFF && (!device->transports[*d] ||
                               device->transports[*d]->state == PA_BLUEZ4_TRANSPORT_STATE_DISCONNECTED)) {
