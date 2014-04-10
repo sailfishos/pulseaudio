@@ -26,6 +26,7 @@
 #include <pulsecore/core-util.h>
 #include <pulsecore/shared.h>
 #include <pulsecore/dbus-shared.h>
+#include <pulse/rtclock.h>
 
 #include "bluez4-util.h"
 #include "a2dp-codecs.h"
@@ -58,6 +59,8 @@
     "  </method>"                                                       \
     " </interface>"                                                     \
     "</node>"
+
+#define RACE_CONDITION_TIME 1000000  // 1 second
 
 struct pa_bluez4_discovery {
     PA_REFCNT_DECLARE;
@@ -487,6 +490,9 @@ static int parse_audio_property(pa_bluez4_device *d, const char *interface, DBus
     DBusMessageIter variant_i;
     bool is_audio_interface;
     pa_bluez4_profile_t p = PA_BLUEZ4_PROFILE_OFF;
+    pa_usec_t tstamp_now;
+    static pa_usec_t tstamp_prev = 0;
+    DBusMessage *m;
 
     pa_assert(d);
     pa_assert(interface);
@@ -517,6 +523,23 @@ static int parse_audio_property(pa_bluez4_device *d, const char *interface, DBus
                 pa_bluez4_audio_state_t state = audio_state_from_string(value);
 
                 pa_log_debug("Device %s interface %s property 'State' changed to value '%s'", d->path, interface, value);
+                /* Device may change state again (e.g. suspend itself) before previous state change
+                 * message has been parsed here. When this take place sink state in here and bluez
+                 * will be out-of-sync. This may generate endless transport acquire/release loop
+                 * which will be sustained by this module. When we notice this to be ongoing
+                 * message is ignored and current state is queried with GetProperties. */
+                if(pa_streq(interface, "org.bluez.AudioSink") && state == PA_BLUEZ4_AUDIO_STATE_CONNECTED) {
+                   tstamp_now = pa_rtclock_now();
+                   if (tstamp_prev != 0 && tstamp_now - tstamp_prev < RACE_CONDITION_TIME) {
+                       pa_log_debug("Race condition. Message ignored.");
+                       tstamp_prev = 0;
+                       pa_assert_se(m = dbus_message_new_method_call("org.bluez", d->path, "org.bluez.AudioSink", "GetProperties"));
+                       send_and_add_to_pending(d->discovery, m, get_properties_reply, d);
+
+                       return 0;
+                   }
+                   tstamp_prev = tstamp_now;
+                }
 
                 if (state == PA_BLUEZ4_AUDIO_STATE_INVALID)
                     return -1;
