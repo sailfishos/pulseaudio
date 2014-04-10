@@ -184,6 +184,8 @@ struct userdata {
     pa_modargs *modargs;
 
     int stream_write_type;
+
+    pa_hook_slot *sco_sink_proplist_changed_slot;
 };
 
 enum {
@@ -375,6 +377,69 @@ static int bt_transport_acquire(struct userdata *u, bool optional) {
     pa_log_info("Transport %s acquired: fd %d", u->transport->path, u->stream_fd);
 
     return 0;
+}
+
+#define HSP_PREVENT_SUSPEND_STR "bluetooth.hsp.prevent.suspend.transport"
+
+/* Check prevent suspend transport value from sco sink proplist.
+ *
+ * Return < 0 if sink proplist doesn't contain HSP_PREVENT_SUSPEND_STR value,
+ * 1 if value is 'true'
+ * 0 if value is something else. */
+static int check_proplist(struct userdata *u) {
+    int ret = -1;
+    const char *str;
+
+    pa_assert(u);
+    pa_assert(u->hsp.sco_sink);
+
+    if ((str = pa_proplist_gets(u->hsp.sco_sink->proplist, HSP_PREVENT_SUSPEND_STR))) {
+        ret = pa_streq(str, "true") ? 1 : 0;
+        pa_log_debug("check proplist: %s == %s", HSP_PREVENT_SUSPEND_STR, ret ? "true" : "false");
+    }
+
+    return ret;
+}
+
+/* There are cases where keeping the transport running even when sco sink and source are suspended
+ * is needed.
+ * To work with these cases, check sco.sink for bluetooth.hsp.prevent.suspend.transport value, and
+ * when set to true prevent closing the transport when sink suspends.
+ * Also, if the sink&source are suspended when sco-sink suspend.transport value changes to true,
+ * bring sco transport up. When suspend.transport value changes to false while sink&source are suspended,
+ * tear down the transport. */
+static void update_allow_release(struct userdata *u) {
+    pa_assert(u);
+
+    if (!u->hsp.sco_sink)
+        return;
+
+    if (check_proplist(u) < 0)
+        return;
+
+    if (!USE_SCO_OVER_PCM(u)) {
+        pa_log_debug("SCO sink not available.");
+        return;
+    }
+
+    if (!PA_SINK_IS_OPENED(pa_sink_get_state(u->hsp.sco_sink)) &&
+        !PA_SOURCE_IS_OPENED(pa_source_get_state(u->hsp.sco_source))) {
+
+        /* Clear all suspend bits, effectively resuming SCO sink for a while. */
+        pa_sink_suspend(u->hsp.sco_sink, FALSE, PA_SUSPEND_ALL);
+    }
+}
+
+static pa_hook_result_t update_allow_release_cb(pa_core *c, pa_sink *s, struct userdata *u) {
+    pa_assert(u);
+    pa_assert(s);
+
+    if (!u->hsp.sco_sink || u->hsp.sco_sink != s)
+        return PA_HOOK_OK;
+
+    update_allow_release(u);
+
+    return PA_HOOK_OK;
 }
 
 /* Run from IO thread */
@@ -1431,6 +1496,10 @@ static int sco_over_pcm_state_update(struct userdata *u, bool changed) {
         if (u->stream_fd < 0)
             return 0;
 
+        if (check_proplist(u) == 1) {
+            pa_log_debug("Suspend prevention active, not closing SCO over PCM");
+            return 0;
+        }
         pa_log_debug("Closing SCO over PCM");
 
         bt_transport_release(u);
@@ -1838,7 +1907,7 @@ static int setup_transport(struct userdata *u) {
     pa_bluez4_transport *t;
 
     pa_assert(u);
-    pa_assert(!u->transport);
+    pa_assert(!u->transport_acquired);
     pa_assert(u->profile != PA_BLUEZ4_PROFILE_OFF);
 
     /* check if profile has a transport */
@@ -2555,6 +2624,10 @@ int pa__init(pa_module *m) {
         pa_hook_connect(pa_bluez4_discovery_hook(u->discovery, PA_BLUEZ4_HOOK_TRANSPORT_SPEAKER_GAIN_CHANGED),
                         PA_HOOK_NORMAL, (pa_hook_cb_t) transport_speaker_gain_changed_cb, u);
 
+    u->sco_sink_proplist_changed_slot =
+        pa_hook_connect(&u->core->hooks[PA_CORE_HOOK_SINK_PROPLIST_CHANGED],
+                        PA_HOOK_NORMAL, (pa_hook_cb_t) update_allow_release_cb, u);
+
     /* Add the card structure. This will also initialize the default profile */
     if (add_card(u) < 0)
         goto fail;
@@ -2633,6 +2706,9 @@ void pa__done(pa_module *m) {
 
     if (u->transport_speaker_changed_slot)
         pa_hook_slot_free(u->transport_speaker_changed_slot);
+
+    if (u->sco_sink_proplist_changed_slot)
+        pa_hook_slot_free(u->sco_sink_proplist_changed_slot);
 
     if (USE_SCO_OVER_PCM(u))
         restore_sco_volume_callbacks(u);
