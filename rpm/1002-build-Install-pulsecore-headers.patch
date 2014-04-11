@@ -1,7 +1,7 @@
-From 8939abc6f23dcb6c646b50db99c3fb5b4b494005 Mon Sep 17 00:00:00 2001
+From 8aa53f0050ade37be0634023a0cf66eb0182c255 Mon Sep 17 00:00:00 2001
 From: Tanu Kaskinen <tanu.kaskinen@jollamobile.com>
 Date: Wed, 5 Sep 2012 12:23:59 +0300
-Subject: [PATCH 2001/2010] build: Install pulsecore headers.
+Subject: [PATCH 1002/1011] build: Install pulsecore headers.
 
 This is for building out-of-tree modules. Upstream doesn't want to
 support out-of-tree modules, so this patch is not upstreamable.
@@ -10,8 +10,8 @@ Mer/Nemo should try to not depend on any out-of-tree modules.
  Makefile.am     |   2 +-
  configure.ac    |   1 +
  pulsecore.pc.in |  12 ++++++
- src/Makefile.am | 125 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- 4 files changed, 139 insertions(+), 1 deletion(-)
+ src/Makefile.am | 129 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 143 insertions(+), 1 deletion(-)
  create mode 100644 pulsecore.pc.in
 
 diff --git a/Makefile.am b/Makefile.am
@@ -28,10 +28,10 @@ index b0b2553..279605c 100644
  if HAVE_GLIB20
  pkgconfig_DATA += \
 diff --git a/configure.ac b/configure.ac
-index 388fae2..0f19843 100644
+index 4854711..3ee77a0 100644
 --- a/configure.ac
 +++ b/configure.ac
-@@ -1352,6 +1352,7 @@ man/Makefile
+@@ -1365,6 +1365,7 @@ man/Makefile
  libpulse.pc
  libpulse-simple.pc
  libpulse-mainloop-glib.pc
@@ -41,7 +41,7 @@ index 388fae2..0f19843 100644
  src/pulse/version.h
 diff --git a/pulsecore.pc.in b/pulsecore.pc.in
 new file mode 100644
-index 0000000..65c9744
+index 0000000..e1111d8
 --- /dev/null
 +++ b/pulsecore.pc.in
 @@ -0,0 +1,12 @@
@@ -55,13 +55,13 @@ index 0000000..65c9744
 +Name: pulsecore
 +Description: Module building interface for pulseaudio
 +Version: @PACKAGE_VERSION@
-+Libs: -L${libdir} -L${libdir}/pulseaudio -lpulsecore-@PA_MAJORMINOR@ -lpulsecommon-@PA_MAJORMINOR@ -lpulse @PTHREAD_LIBS@
++Libs: -L${libdir} -L${libdir}/pulseaudio -L${libdir}/pulse-@PA_MAJORMINOR@/modules -lpulsecore-@PA_MAJORMINOR@ -lpulsecommon-@PA_MAJORMINOR@ -lpulse @PTHREAD_LIBS@
 +Cflags: -D_REENTRANT -D__INCLUDED_FROM_PULSE_AUDIO -DPA_DEFAULT_CONFIG_DIR=\"@PA_DEFAULT_CONFIG_DIR@\" -I${includedir}
 diff --git a/src/Makefile.am b/src/Makefile.am
-index a621a30..88db31c 100644
+index 857fda3..bab318d 100644
 --- a/src/Makefile.am
 +++ b/src/Makefile.am
-@@ -722,6 +722,131 @@ libpulsecommon_@PA_MAJORMINOR@_la_LIBADD += $(DBUS_LIBS)
+@@ -741,6 +741,135 @@ libpulsecommon_@PA_MAJORMINOR@_la_LIBADD += $(DBUS_LIBS)
  endif
  
  ###################################
@@ -85,6 +85,7 @@ index a621a30..88db31c 100644
 +		pulsecore/cli-text.h \
 +		pulsecore/conf-parser.h \
 +		pulsecore/core-error.h \
++		pulsecore/core-format.h \
 +		pulsecore/core.h \
 +		pulsecore/core-rtclock.h \
 +		pulsecore/core-scache.h \
@@ -123,6 +124,7 @@ index a621a30..88db31c 100644
 +		pulsecore/memchunk.h \
 +		pulsecore/memtrap.h \
 +		pulsecore/mime-type.h \
++		pulsecore/mix.h \
 +		pulsecore/modargs.h \
 +		pulsecore/modinfo.h \
 +		pulsecore/module.h \
@@ -163,6 +165,7 @@ index a621a30..88db31c 100644
 +		pulsecore/sconv-s16le.h \
 +		pulsecore/semaphore.h \
 +		pulsecore/shared.h \
++		pulsecore/shmasyncq.h \
 +		pulsecore/shm.h \
 +		pulsecore/sink.h \
 +		pulsecore/sink-input.h \
@@ -178,6 +181,7 @@ index a621a30..88db31c 100644
 +		pulsecore/source-output.h \
 +		pulsecore/start-child.h \
 +		pulsecore/strbuf.h \
++		pulsecore/stream-util.h \
 +		pulsecore/strlist.h \
 +		pulsecore/svolume-orc-gen.h \
 +		pulsecore/tagstruct.h \

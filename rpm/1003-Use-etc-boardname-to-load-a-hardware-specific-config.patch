@@ -1,4 +1,4 @@
-From 4e91d9b466af068d944dbeecbb2813618af19e52 Mon Sep 17 00:00:00 2001
+From 7564355be0c8dad3bc0cb4646277579233dd8129 Mon Sep 17 00:00:00 2001
 From: Tanu Kaskinen <tanu.kaskinen@jollamobile.com>
 Date: Wed, 10 Oct 2012 11:07:48 +0300
 Subject: [PATCH 2002/2010] Use /etc/boardname to load a hardware specific
@@ -14,10 +14,10 @@ that.
  src/daemon/start-pulseaudio      | 41 ++++++++++++++++++++++++++++++++++++++++
  src/pulse/client.conf.in         |  2 +-
  4 files changed, 44 insertions(+), 3 deletions(-)
- create mode 100755 src/daemon/start-pulseaudio
+ create mode 100644 src/daemon/start-pulseaudio
 
 diff --git a/src/Makefile.am b/src/Makefile.am
-index 88db31c..04fdbb5 100644
+index bab318d..7b2c0ab 100644
 --- a/src/Makefile.am
 +++ b/src/Makefile.am
 @@ -176,7 +176,7 @@ endif
@@ -30,11 +30,11 @@ index 88db31c..04fdbb5 100644
  bin_PROGRAMS += \
  		pacat \
 diff --git a/src/daemon/pulseaudio.desktop.in b/src/daemon/pulseaudio.desktop.in
-index b75b378..5049953 100644
+index ce99382..47033e3 100644
 --- a/src/daemon/pulseaudio.desktop.in
 +++ b/src/daemon/pulseaudio.desktop.in
-@@ -3,7 +3,7 @@ Version=1.0
- Encoding=UTF-8
+@@ -2,7 +2,7 @@
+ Version=1.0
  _Name=PulseAudio Sound System
  _Comment=Start the PulseAudio Sound System
 -Exec=start-pulseaudio-x11
@@ -43,7 +43,7 @@ index b75b378..5049953 100644
  Type=Application
  Categories=
 diff --git a/src/daemon/start-pulseaudio b/src/daemon/start-pulseaudio
-new file mode 100755
+new file mode 100644
 index 0000000..d74735a
 --- /dev/null
 +++ b/src/daemon/start-pulseaudio
