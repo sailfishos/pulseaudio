@@ -1,0 +1,28 @@
+From 812bbb41dd62aa5e058cc0c67bbf807e8b25678d Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
+ <juho.hamalainen@tieto.com>
+Date: Thu, 10 Apr 2014 10:27:45 +0300
+Subject: [PATCH 1009/1011] bluez4-device: Do not lose transport pointer after
+ getting it.
+
+---
+ src/modules/bluetooth/module-bluez4-device.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/modules/bluetooth/module-bluez4-device.c b/src/modules/bluetooth/module-bluez4-device.c
+index 28ddced..12453e1 100644
+--- a/src/modules/bluetooth/module-bluez4-device.c
++++ b/src/modules/bluetooth/module-bluez4-device.c
+@@ -1976,7 +1976,8 @@ static void stop_thread(struct userdata *u) {
+ 
+     if (u->transport) {
+         bt_transport_release(u);
+-        u->transport = NULL;
++        /* Do not set transport pointer to NULL. When failing to switch
++         * profile NULL u->transport would assert. */
+     }
+ 
+     if (u->sink) {
+-- 
+1.8.5.2
+

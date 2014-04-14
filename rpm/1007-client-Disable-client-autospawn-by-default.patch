@@ -1,8 +1,8 @@
-From 245d1ac4b61bc6e59ec77b832cdd259668803337 Mon Sep 17 00:00:00 2001
+From f6061b8ede58377355e4b8840faf9de676ae6384 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Fri, 4 Oct 2013 12:41:15 +0300
-Subject: [PATCH 2006/2010] client: Disable client autospawn by default.
+Subject: [PATCH 1007/1011] client: Disable client autospawn by default.
 
 Not upstreamable.
 ---

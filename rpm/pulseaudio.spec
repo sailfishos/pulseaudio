@@ -3,10 +3,10 @@
 
 Name:       pulseaudio
 
-%define pulseversion 4.0
+%define pulseversion 5.0
 
 Summary:    General purpose sound server
-Version:    4.0
+Version:    5.0
 Release:    1
 Group:      Multimedia/PulseAudio
 License:    LGPLv2+
@@ -14,19 +14,17 @@ URL:        http://pulseaudio.org
 Source0:    http://freedesktop.org/software/pulseaudio/releases/pulseaudio-%{version}.tar.xz
 Source1:    90-pulse.conf
 Source2:    pulseaudio.service
-Patch0:     1001-combine-Fix-crash-in-output-freeing.patch
-Patch1:     2001-build-Install-pulsecore-headers.patch
-Patch2:     2002-Use-etc-boardname-to-load-a-hardware-specific-config.patch
-Patch3:     2003-daemon-Disable-automatic-shutdown-by-default.patch
-Patch4:     2004-daemon-Set-default-resampler-to-speex-fixed-2.patch
-Patch5:     2005-bluetooth-Allow-leaving-transport-running-while-sink.patch
-Patch6:     2006-client-Disable-client-autospawn-by-default.patch
-Patch7:     2007-bluetooth-device-Do-not-lose-transport-pointer-after.patch
-Patch8:     2008-bluetooth-device-Default-to-using-A2DP-profile-initi.patch
-Patch9:     2009-module-rescue-streams-Add-parameters-to-define-targe.patch
-Patch10:    2010-bluetooth-util-Detect-transport-acquire-release-loop.patch
-Patch11:    0101-core-make-dependencies-compile-for-64bit.patch
-Patch12:    2011-suspend-on-idle-ensure-we-still-time-out-if-a-stream.patch
+Patch0:     1001-core-make-dependencies-compile-for-64bit.patch
+Patch1:     1002-build-Install-pulsecore-headers.patch
+Patch2:     1003-Use-etc-boardname-to-load-a-hardware-specific-config.patch
+Patch3:     1004-daemon-Disable-automatic-shutdown-by-default.patch
+Patch4:     1005-daemon-Set-default-resampler-to-speex-fixed-2.patch
+Patch5:     1006-module-rescue-streams-Add-parameters-to-define-defau.patch
+Patch6:     1007-client-Disable-client-autospawn-by-default.patch
+Patch7:     1008-bluez4-device-Allow-leaving-transport-running-while-.patch
+Patch8:     1009-bluez4-device-Do-not-lose-transport-pointer-after-ge.patch
+Patch9:     1010-bluez4-device-Default-to-using-A2DP-profile-initiall.patch
+Patch10:    1011-bluez4-util-Detect-transport-acquire-release-loop.patch
 Requires:   udev
 Requires:   libsbc >= 1.0
 Requires(post): /sbin/ldconfig
@@ -112,32 +110,28 @@ to manage the devices in PulseAudio.
 %prep
 %setup -q -n %{name}-%{version}/pulseaudio
 
-# 1001-combine-Fix-crash-in-output-freeing.patch
+# 1001-core-make-dependencies-compile-for-64bit.patch
 %patch0 -p1
-# 2002-Use-etc-boardname-to-load-a-hardware-specific-config.patch
+# 1002-build-Install-pulsecore-headers.patch
 %patch1 -p1
-# 2003-daemon-Disable-automatic-shutdown-by-default.patch
+# 1003-Use-etc-boardname-to-load-a-hardware-specific-config.patch
 %patch2 -p1
-# 2004-daemon-Set-default-resampler-to-speex-fixed-2.patch
+# 1004-daemon-Disable-automatic-shutdown-by-default.patch
 %patch3 -p1
-# 2005-bluetooth-Allow-leaving-transport-running-while-sink.patch
+# 1005-daemon-Set-default-resampler-to-speex-fixed-2.patch
 %patch4 -p1
-# 2006-client-Disable-client-autospawn-by-default.patch
+# 1006-module-rescue-streams-Add-parameters-to-define-defau.patch
 %patch5 -p1
-# 2007-bluetooth-device-Do-not-lose-transport-pointer-after.patch
+# 1007-client-Disable-client-autospawn-by-default.patch
 %patch6 -p1
-# 2007-bluetooth-device-Do-not-lose-transport-pointer-after.patch
+# 1008-bluez4-device-Allow-leaving-transport-running-while-.patch
 %patch7 -p1
-# 2008-bluetooth-device-Default-to-using-A2DP-profile-initi.patch
+# 1009-bluez4-device-Do-not-lose-transport-pointer-after-ge.patch
 %patch8 -p1
-# 2009-module-rescue-streams-Add-parameters-to-define-targe.patch
+# 1010-bluez4-device-Default-to-using-A2DP-profile-initiall.patch
 %patch9 -p1
-# 2010-bluetooth-util-Detect-transport-acquire-release-loop.patch
+# 1011-bluez4-util-Detect-transport-acquire-release-loop.patch
 %patch10 -p1
-# 0101-core-make-dependencies-compile-for-64bit.patch
-%patch11 -p1
-# 2011-suspend-on-idle-ensure-we-still-time-out-if-a-stream.patch
-%patch12 -p1
 
 %build
 echo "%{pulseversion}" > .tarball-version
@@ -224,7 +218,8 @@ ln -s ../pulseaudio.service %{buildroot}/usr/lib/systemd/user/user-session.targe
 %{_libdir}/*.so.*
 %{_libdir}/libpulsecore-%{pulseversion}.so
 %{_libdir}/pulse-%{pulseversion}/modules/libalsa-util.so
-%{_libdir}/pulse-%{pulseversion}/modules/libbluetooth-util.so
+%{_libdir}/pulse-%{pulseversion}/modules/libbluez4-util.so
+%{_libdir}/pulse-%{pulseversion}/modules/libbluez5-util.so
 %{_libdir}/pulse-%{pulseversion}/modules/libcli.so
 %{_libdir}/pulse-%{pulseversion}/modules/liboss-util.so
 %{_libdir}/pulse-%{pulseversion}/modules/libprotocol-cli.so
@@ -237,9 +232,11 @@ ln -s ../pulseaudio.service %{buildroot}/usr/lib/systemd/user/user-session.targe
 %{_libdir}/pulse-%{pulseversion}/modules/module-alsa-source.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-always-sink.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-augment-properties.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-bluetooth-device.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-bluez4-device.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-bluez4-discover.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-bluez5-device.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-bluez5-discover.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-bluetooth-discover.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-bluetooth-proximity.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-bluetooth-policy.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-card-restore.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-cli-protocol-tcp.so
@@ -290,7 +287,9 @@ ln -s ../pulseaudio.service %{buildroot}/usr/lib/systemd/user/user-session.targe
 %{_libdir}/pulse-%{pulseversion}/modules/module-switch-on-port-available.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-switch-on-connect.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-tunnel-sink.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-tunnel-sink-new.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-tunnel-source.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-tunnel-source-new.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-udev-detect.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-virtual-sink.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-virtual-source.so
@@ -299,7 +298,6 @@ ln -s ../pulseaudio.service %{buildroot}/usr/lib/systemd/user/user-session.targe
 %{_libdir}/pulse-%{pulseversion}/modules/module-remap-source.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-role-ducking.so
 %{_libdir}/pulseaudio/*.so
-%{_libexecdir}/pulse/proximity-helper
 %{_datadir}/pulseaudio/alsa-mixer/paths/*.conf
 %{_datadir}/pulseaudio/alsa-mixer/paths/*.common
 %{_datadir}/pulseaudio/alsa-mixer/profile-sets/*.conf
