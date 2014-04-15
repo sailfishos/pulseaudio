@@ -25,6 +25,7 @@ Patch7:     1008-bluez4-device-Allow-leaving-transport-running-while-.patch
 Patch8:     1009-bluez4-device-Do-not-lose-transport-pointer-after-ge.patch
 Patch9:     1010-bluez4-device-Default-to-using-A2DP-profile-initiall.patch
 Patch10:    1011-bluez4-util-Detect-transport-acquire-release-loop.patch
+Patch11:    2001-dbus-Use-correct-initialization-for-source-ports-has.patch
 Requires:   udev
 Requires:   libsbc >= 1.0
 Requires(post): /sbin/ldconfig
@@ -132,6 +133,8 @@ to manage the devices in PulseAudio.
 %patch9 -p1
 # 1011-bluez4-util-Detect-transport-acquire-release-loop.patch
 %patch10 -p1
+# 2001-dbus-Use-correct-initialization-for-source-ports-has.patch
+%patch11 -p1
 
 %build
 echo "%{pulseversion}" > .tarball-version
