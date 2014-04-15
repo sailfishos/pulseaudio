@@ -1,0 +1,33 @@
+From 433fd29a1f5ee75527343ff7299c59f58c0b2dc6 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
+ <juho.hamalainen@tieto.com>
+Date: Tue, 15 Apr 2014 15:45:03 +0300
+Subject: [PATCH] dbus: Use correct initialization for source ports hashmap.
+
+Source ports hashmap is created without value freeing function, which
+results in (hashmap values) device ports not being freed when source
+ports are removed or module is unloaded. This results in memory leak
+during normal operation and during daemon shutdown dbus_protocol shared
+object isn't unreferenced correctly, leaving dbus_protocol object in
+core->shared, which causes assert when shared hashmap is checked for
+isempty() before freeing.
+---
+ src/modules/dbus/iface-device.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/modules/dbus/iface-device.c b/src/modules/dbus/iface-device.c
+index 34b370b..625f057 100644
+--- a/src/modules/dbus/iface-device.c
++++ b/src/modules/dbus/iface-device.c
+@@ -1248,7 +1248,7 @@ pa_dbusiface_device *pa_dbusiface_device_new_source(pa_dbusiface_core *core, pa_
+     d->volume = *pa_source_get_volume(source, false);
+     d->mute = pa_source_get_mute(source, false);
+     d->source_state = pa_source_get_state(source);
+-    d->ports = pa_hashmap_new(pa_idxset_string_hash_func, pa_idxset_string_compare_func);
++    d->ports = pa_hashmap_new_full(pa_idxset_string_hash_func, pa_idxset_string_compare_func, NULL, (pa_free_cb_t) pa_dbusiface_device_port_free);
+     d->next_port_index = 0;
+     d->active_port = source->active_port;
+     d->proplist = pa_proplist_copy(source->proplist);
+-- 
+1.8.5.2
+
