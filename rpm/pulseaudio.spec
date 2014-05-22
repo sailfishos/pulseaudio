@@ -199,7 +199,7 @@ ln -s ../pulseaudio.service %{buildroot}/usr/lib/systemd/user/user-session.targe
 %exclude %{_mandir}/man1/start-pulseaudio-kde.1.gz
 %exclude %{_mandir}/man1/pax11publish.1.gz
 %endif
-%config(noreplace) %{_sysconfdir}/dbus-1/system.d/pulseaudio-system.conf
+%exclude %{_sysconfdir}/dbus-1/system.d/pulseaudio-system.conf
 %config(noreplace) %{_sysconfdir}/pulse/*.conf
 %config(noreplace) %{_sysconfdir}/pulse/*.pa
 %config(noreplace) %{_sysconfdir}/security/limits.d/90-pulse.conf
