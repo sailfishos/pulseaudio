@@ -4,8 +4,7 @@ After=xorg.service pre-user-session.target
 Requires=dbus.socket
 
 [Service]
-Type=forking
-PIDFile=%t/pulse/pid
-ExecStart=/usr/bin/start-pulseaudio
+EnvironmentFile=-/etc/sysconfig/pulseaudio
+ExecStart=/usr/bin/pulseaudio $CONFIG
 Restart=always
 RestartSec=1

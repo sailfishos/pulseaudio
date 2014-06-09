@@ -1,4 +1,4 @@
-From 8aa53f0050ade37be0634023a0cf66eb0182c255 Mon Sep 17 00:00:00 2001
+From 281320c6faf042464b14f3dfb9460077d8d7c878 Mon Sep 17 00:00:00 2001
 From: Tanu Kaskinen <tanu.kaskinen@jollamobile.com>
 Date: Wed, 5 Sep 2012 12:23:59 +0300
 Subject: [PATCH 1002/1011] build: Install pulsecore headers.
