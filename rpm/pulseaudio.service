@@ -4,9 +4,10 @@ After=pre-user-session.target
 Requires=dbus.socket
 
 [Service]
-Type=simple
+Type=forking
+PIDFile=%t/pulse/pid
 EnvironmentFile=-/etc/sysconfig/pulseaudio
-ExecStart=/usr/bin/pulseaudio $CONFIG
+ExecStart=/usr/bin/pulseaudio --start $CONFIG
 Restart=always
 RestartSec=1
 
