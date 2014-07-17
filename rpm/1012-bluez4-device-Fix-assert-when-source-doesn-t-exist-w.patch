@@ -1,0 +1,30 @@
+From ce456c0c6699109bc9c5ddcfb8a2d2f6ca8a0318 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
+ <juho.hamalainen@tieto.com>
+Date: Thu, 17 Jul 2014 09:53:14 +0300
+Subject: [PATCH 1012/1012] bluez4-device: Fix assert when source doesn't exist
+ when changing properties.
+
+---
+ src/modules/bluetooth/module-bluez4-device.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/modules/bluetooth/module-bluez4-device.c b/src/modules/bluetooth/module-bluez4-device.c
+index efd0589..32392bf 100644
+--- a/src/modules/bluetooth/module-bluez4-device.c
++++ b/src/modules/bluetooth/module-bluez4-device.c
+@@ -1536,6 +1536,11 @@ static pa_hook_result_t transport_nrec_changed_cb(pa_bluez4_discovery *y, pa_blu
+     if (t != u->transport)
+         return PA_HOOK_OK;
+ 
++    if (!u->source) {
++        pa_log_warn("trying to change bluez4 source property, but source doesn't exist.");
++        return PA_HOOK_OK;
++    }
++
+     p = pa_proplist_new();
+     pa_proplist_sets(p, "bluetooth.nrec", t->nrec ? "1" : "0");
+     pa_source_update_proplist(u->source, PA_UPDATE_REPLACE, p);
+-- 
+1.8.5.2
+
