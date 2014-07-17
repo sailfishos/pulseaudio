@@ -1540,6 +1540,11 @@ static pa_hook_result_t transport_nrec_changed_cb(pa_bluez4_discovery *y, pa_blu
     if (t != u->transport)
         return PA_HOOK_OK;
 
+    if (!u->source) {
+        pa_log_warn("trying to change bluez4 source property, but source doesn't exist.");
+        return PA_HOOK_OK;
+    }
+
     p = pa_proplist_new();
     pa_proplist_sets(p, "bluetooth.nrec", t->nrec ? "1" : "0");
     pa_source_update_proplist(u->source, PA_UPDATE_REPLACE, p);
