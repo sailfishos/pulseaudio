@@ -1,0 +1,35 @@
+From 82957a704331f5fac13a7550e66fd86114ef5458 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
+ <juho.hamalainen@tieto.com>
+Date: Fri, 15 Aug 2014 12:30:00 +0300
+Subject: [PATCH 1013/1013] core: Use XDG_RUNTIME_DIR only if owned by us.
+
+If for some reason XDG_RUNTIME_DIR points to runtime dir not owned by
+our uid, fail. Having wrong XDG_RUNTIME_DIR is especially bad with root,
+since then the pulse runtime directory's ownership is changed,
+preventing clients from connecting etc bad things.
+---
+ src/pulsecore/core-util.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/src/pulsecore/core-util.c b/src/pulsecore/core-util.c
+index 0d9e354..83cd40d 100644
+--- a/src/pulsecore/core-util.c
++++ b/src/pulsecore/core-util.c
+@@ -1789,6 +1789,13 @@ char *pa_get_runtime_dir(void) {
+     /* Use the XDG standard for the runtime directory. */
+     d = getenv("XDG_RUNTIME_DIR");
+     if (d) {
++#ifdef HAVE_FSTAT
++        struct stat st;
++        if (stat(d, &st) == 0 && st.st_uid != getuid()) {
++            pa_log("XDG_RUNTIME_DIR (%s) is not owned by us (uid %d), but by uid %d.", d, getuid(), st.st_uid);
++            goto fail;
++        }
++#endif
+         k = pa_sprintf_malloc("%s" PA_PATH_SEP "pulse", d);
+ 
+         if (pa_make_secure_dir(k, m, (uid_t) -1, (gid_t) -1, true) < 0) {
+-- 
+1.8.5.2
+
