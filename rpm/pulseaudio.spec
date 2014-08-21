@@ -36,7 +36,7 @@ BuildRequires:  pkgconfig(alsa) >= 1.0.24
 BuildRequires:  pkgconfig(bluez) >= 4.99
 BuildRequires:  pkgconfig(dbus-1) >= 1.4.12
 BuildRequires:  pkgconfig(glib-2.0) >= 2.4.0
-BuildRequires:  pkgconfig(json) >= 0.9
+BuildRequires:  pkgconfig(json-c) >= 0.12
 BuildRequires:  pkgconfig(libasyncns) >= 0.1
 BuildRequires:  pkgconfig(libsystemd-daemon)
 BuildRequires:  pkgconfig(libsystemd-login)
