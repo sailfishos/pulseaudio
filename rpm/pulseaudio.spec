@@ -210,6 +210,7 @@ ln -s ../pulseaudio.service %{buildroot}/usr/lib/systemd/user/user-session.targe
 %config(noreplace) %{_sysconfdir}/pulse/*.pa
 %config(noreplace) %{_sysconfdir}/security/limits.d/90-pulse.conf
 %{_sysconfdir}/bash_completion.d/pulseaudio-bash-completion.sh
+%dir %{_sysconfdir}/pulse
 %{_libdir}/systemd/user/pulseaudio.service
 %{_libdir}/systemd/user/user-session.target.wants/pulseaudio.service
 /lib/udev/rules.d/90-pulseaudio.rules
@@ -225,6 +226,9 @@ ln -s ../pulseaudio.service %{buildroot}/usr/lib/systemd/user/user-session.targe
 %{_bindir}/pulseaudio
 %{_libdir}/*.so.*
 %{_libdir}/libpulsecore-%{pulseversion}.so
+%dir %{_libdir}/pulseaudio
+%dir %{_libdir}/pulse-%{pulseversion}/
+%dir %{_libdir}/pulse-%{pulseversion}/modules/
 %{_libdir}/pulse-%{pulseversion}/modules/libalsa-util.so
 %{_libdir}/pulse-%{pulseversion}/modules/libbluez4-util.so
 %{_libdir}/pulse-%{pulseversion}/modules/libbluez5-util.so
@@ -306,6 +310,10 @@ ln -s ../pulseaudio.service %{buildroot}/usr/lib/systemd/user/user-session.targe
 %{_libdir}/pulse-%{pulseversion}/modules/module-remap-source.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-role-ducking.so
 %{_libdir}/pulseaudio/*.so
+%dir %{_datadir}/pulseaudio
+%dir %{_datadir}/pulseaudio/alsa-mixer
+%dir %{_datadir}/pulseaudio/alsa-mixer/paths
+%dir %{_datadir}/pulseaudio/alsa-mixer/profile-sets
 %{_datadir}/pulseaudio/alsa-mixer/paths/*.conf
 %{_datadir}/pulseaudio/alsa-mixer/paths/*.common
 %{_datadir}/pulseaudio/alsa-mixer/profile-sets/*.conf
