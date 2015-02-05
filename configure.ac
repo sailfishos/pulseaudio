@@ -1498,6 +1498,7 @@ man/Makefile
 libpulse.pc
 libpulse-simple.pc
 libpulse-mainloop-glib.pc
+pulsecore.pc
 doxygen/Makefile
 doxygen/doxygen.conf
 src/pulse/version.h

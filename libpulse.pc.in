@@ -6,7 +6,7 @@ modlibexecdir=@modlibexecdir@
 
 Name: libpulse
 Description: PulseAudio Client Interface
-Version: @PACKAGE_VERSION@
+Version: @PA_MAJORMINOR@
 Libs: -L${libdir} -lpulse @PTHREAD_LIBS@
 Libs.private: -L${libdir}/pulseaudio -lpulsecommon-@PA_MAJORMINOR@
 Cflags: -I${includedir} -D_REENTRANT

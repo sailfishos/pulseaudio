@@ -55,7 +55,7 @@ dist_vapi_DATA = \
 		vala/libpulse-simple.deps vala/libpulse-simple.vapi
 
 pkgconfigdir = $(libdir)/pkgconfig
-pkgconfig_DATA = libpulse.pc libpulse-simple.pc
+pkgconfig_DATA = libpulse.pc libpulse-simple.pc pulsecore.pc
 
 if HAVE_GLIB20
 pkgconfig_DATA += \
