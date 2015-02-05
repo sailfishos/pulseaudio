@@ -869,9 +869,11 @@ if get_option('client')
   pc_cdata.set('prefix', prefix)
   pc_cdata.set('exec_prefix', prefix)
   pc_cdata.set('libdir', libdir)
+  pc_cdata.set('libexecdir', libexecdir)
   pc_cdata.set('includedir', includedir)
   pc_cdata.set('modlibexecdir', modlibexecdir)
   pc_cdata.set('PACKAGE_VERSION', pa_version_str)
+  pc_cdata.set('PA_DEFAULT_CONFIG_DIR', pulsesysconfdir)
   pc_cdata.set('PA_MAJORMINOR', pa_version_major_minor)
   # FIXME: the line below is wrong. Currently the meson thread dep lacks documentation,
   # and doesn't allow introspection, ie. none of get_pkgconfig_variable() or
@@ -882,6 +884,7 @@ if get_option('client')
   pc_files = [
     'libpulse.pc',
     'libpulse-simple.pc',
+    'pulsecore.pc',
   ]
 
   if glib_dep.found()

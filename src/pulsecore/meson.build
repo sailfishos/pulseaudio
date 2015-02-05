@@ -58,6 +58,17 @@ libpulsecore_sources = [
   'thread-mq.c',
 ]
 
+libpulsecore_ffmpeg_headers = [
+  'ffmpeg/avcodec.h',
+  'ffmpeg/dsputil.h',
+]
+
+libpulsecore_filter_headers = [
+  'filter/biquad.h',
+  'filter/crossover.h',
+  'filter/lfe-filter.h'
+]
+
 libpulsecore_headers = [
   'asyncmsgq.h',
   'asyncq.h',
@@ -75,11 +86,6 @@ libpulsecore_headers = [
   'cpu-x86.h',
   'database.h',
   'device-port.h',
-  'ffmpeg/avcodec.h',
-  'ffmpeg/dsputil.h',
-  'filter/biquad.h',
-  'filter/crossover.h',
-  'filter/lfe-filter.h',
   'hook-list.h',
   'ltdl-helper.h',
   'message-handler.h',
@@ -92,6 +98,8 @@ libpulsecore_headers = [
   'object.h',
   'play-memblockq.h',
   'play-memchunk.h',
+  'poll.h',
+  'protocol-native.h',
   'remap.h',
   'resampler.h',
   'rtpoll.h',
@@ -215,7 +223,7 @@ if host_machine.system() == 'windows'
 endif
 
 libpulsecore = shared_library('pulsecore-' + pa_version_major_minor,
-  libpulsecore_sources, libpulsecore_headers,
+  libpulsecore_sources, [ libpulsecore_headers, libpulsecore_ffmpeg_headers, libpulsecore_headers ],
   orc_sources, orc_headers,
   include_directories : [configinc, topinc],
   c_args : [pa_c_args, server_c_args],
@@ -228,6 +236,21 @@ libpulsecore = shared_library('pulsecore-' + pa_version_major_minor,
   implicit_include_directories : false)
 
 libpulsecore_dep = declare_dependency(link_with: libpulsecore)
+
+install_headers(
+  libpulsecore_headers,
+  subdir : 'pulsecore'
+)
+
+install_headers(
+  libpulsecore_ffmpeg_headers,
+  subdir : 'pulsecore/ffmpeg'
+)
+
+install_headers(
+  libpulsecore_filter_headers,
+  subdir : 'pulsecore/filter'
+)
 
 # Internal libraries for modules
 # TODO: understand 'c_args' and 'dependencies' better, maybe we can remove some
