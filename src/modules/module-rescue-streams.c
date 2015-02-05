@@ -37,12 +37,20 @@ PA_MODULE_AUTHOR("Lennart Poettering");
 PA_MODULE_DESCRIPTION("When a sink/source is removed, try to move its streams to the default sink/source");
 PA_MODULE_VERSION(PACKAGE_VERSION);
 PA_MODULE_LOAD_ONCE(true);
+PA_MODULE_USAGE(
+        "sink_name=<name for sink that is tried first when rescuing sinks."
+        "source_name=<name for source that is tried first when rescuing sources.");
 
 static const char* const valid_modargs[] = {
+    "sink_name",
+    "source_name",
     NULL,
 };
 
 struct userdata {
+    char *default_sink_name;
+    char *default_source_name;
+
     pa_hook_slot
         *sink_unlink_slot,
         *source_unlink_slot,
@@ -95,14 +103,22 @@ static void build_group_ports(pa_hashmap *g_ports, pa_hashmap *s_ports) {
         pa_hashmap_put(g_ports, p, p);
 }
 
-static pa_sink* find_evacuation_sink(pa_core *c, pa_sink_input *i, pa_sink *skip) {
+static pa_sink* find_evacuation_sink(struct userdata *u, pa_core *c, pa_sink_input *i, pa_sink *skip) {
     pa_sink *target, *fb_sink = NULL;
     uint32_t idx;
     pa_hashmap *all_ports;
     pa_device_port *best_port;
 
+    pa_assert(u);
     pa_assert(c);
     pa_assert(i);
+
+    if (u->default_sink_name) {
+        if ((target = pa_namereg_get(c, u->default_sink_name, PA_NAMEREG_SINK))) {
+            if (target != skip)
+                return target;
+        }
+    }
 
     if (c->default_sink && c->default_sink != skip && pa_sink_input_may_move_to(i, c->default_sink))
         return c->default_sink;
@@ -143,12 +159,13 @@ static pa_sink* find_evacuation_sink(pa_core *c, pa_sink_input *i, pa_sink *skip
     return target;
 }
 
-static pa_hook_result_t sink_unlink_hook_callback(pa_core *c, pa_sink *sink, void* userdata) {
+static pa_hook_result_t sink_unlink_hook_callback(pa_core *c, pa_sink *sink, struct userdata *u) {
     pa_sink_input *i;
     uint32_t idx;
 
     pa_assert(c);
     pa_assert(sink);
+    pa_assert(u);
 
     /* There's no point in doing anything if the core is shut down anyway */
     if (c->state == PA_CORE_SHUTDOWN)
@@ -162,7 +179,7 @@ static pa_hook_result_t sink_unlink_hook_callback(pa_core *c, pa_sink *sink, voi
     PA_IDXSET_FOREACH(i, sink->inputs, idx) {
         pa_sink *target;
 
-        if (!(target = find_evacuation_sink(c, i, sink)))
+        if (!(target = find_evacuation_sink(u, c, i, sink)))
             continue;
 
         if (pa_sink_input_move_to(i, target, false) < 0)
@@ -176,17 +193,18 @@ static pa_hook_result_t sink_unlink_hook_callback(pa_core *c, pa_sink *sink, voi
     return PA_HOOK_OK;
 }
 
-static pa_hook_result_t sink_input_move_fail_hook_callback(pa_core *c, pa_sink_input *i, void *userdata) {
+static pa_hook_result_t sink_input_move_fail_hook_callback(pa_core *c, pa_sink_input *i, struct userdata *u) {
     pa_sink *target;
 
     pa_assert(c);
     pa_assert(i);
+    pa_assert(u);
 
     /* There's no point in doing anything if the core is shut down anyway */
     if (c->state == PA_CORE_SHUTDOWN)
         return PA_HOOK_OK;
 
-    if (!(target = find_evacuation_sink(c, i, NULL)))
+    if (!(target = find_evacuation_sink(u, c, i, NULL)))
         return PA_HOOK_OK;
 
     if (pa_sink_input_finish_move(i, target, false) < 0) {
@@ -201,14 +219,22 @@ static pa_hook_result_t sink_input_move_fail_hook_callback(pa_core *c, pa_sink_i
     }
 }
 
-static pa_source* find_evacuation_source(pa_core *c, pa_source_output *o, pa_source *skip) {
+static pa_source* find_evacuation_source(struct userdata *u, pa_core *c, pa_source_output *o, pa_source *skip) {
     pa_source *target, *fb_source = NULL;
     uint32_t idx;
     pa_hashmap *all_ports;
     pa_device_port *best_port;
 
+    pa_assert(u);
     pa_assert(c);
     pa_assert(o);
+
+    if (u->default_source_name) {
+        if ((target = pa_namereg_get(c, u->default_source_name, PA_NAMEREG_SOURCE))) {
+            if (target != skip)
+                return target;
+        }
+    }
 
     if (c->default_source && c->default_source != skip && pa_source_output_may_move_to(o, c->default_source))
         return c->default_source;
@@ -253,12 +279,13 @@ static pa_source* find_evacuation_source(pa_core *c, pa_source_output *o, pa_sou
     return target;
 }
 
-static pa_hook_result_t source_unlink_hook_callback(pa_core *c, pa_source *source, void* userdata) {
+static pa_hook_result_t source_unlink_hook_callback(pa_core *c, pa_source *source, struct userdata *u) {
     pa_source_output *o;
     uint32_t idx;
 
     pa_assert(c);
     pa_assert(source);
+    pa_assert(u);
 
     /* There's no point in doing anything if the core is shut down anyway */
     if (c->state == PA_CORE_SHUTDOWN)
@@ -272,7 +299,7 @@ static pa_hook_result_t source_unlink_hook_callback(pa_core *c, pa_source *sourc
     PA_IDXSET_FOREACH(o, source->outputs, idx) {
         pa_source *target;
 
-        if (!(target = find_evacuation_source(c, o, source)))
+        if (!(target = find_evacuation_source(u, c, o, source)))
             continue;
 
         if (pa_source_output_move_to(o, target, false) < 0)
@@ -286,17 +313,18 @@ static pa_hook_result_t source_unlink_hook_callback(pa_core *c, pa_source *sourc
     return PA_HOOK_OK;
 }
 
-static pa_hook_result_t source_output_move_fail_hook_callback(pa_core *c, pa_source_output *i, void *userdata) {
+static pa_hook_result_t source_output_move_fail_hook_callback(pa_core *c, pa_source_output *i, struct userdata *u) {
     pa_source *target;
 
     pa_assert(c);
     pa_assert(i);
+    pa_assert(u);
 
     /* There's no point in doing anything if the core is shut down anyway */
     if (c->state == PA_CORE_SHUTDOWN)
         return PA_HOOK_OK;
 
-    if (!(target = find_evacuation_source(c, i, NULL)))
+    if (!(target = find_evacuation_source(u, c, i, NULL)))
         return PA_HOOK_OK;
 
     if (pa_source_output_finish_move(i, target, false) < 0) {
@@ -314,6 +342,7 @@ static pa_hook_result_t source_output_move_fail_hook_callback(pa_core *c, pa_sou
 int pa__init(pa_module*m) {
     pa_modargs *ma;
     struct userdata *u;
+    const char *tmp;
 
     pa_assert(m);
 
@@ -322,7 +351,13 @@ int pa__init(pa_module*m) {
         return -1;
     }
 
-    m->userdata = u = pa_xnew(struct userdata, 1);
+    m->userdata = u = pa_xnew0(struct userdata, 1);
+
+    if ((tmp = pa_modargs_get_value(ma, "sink_name", NULL)))
+        u->default_sink_name = pa_xstrdup(tmp);
+
+    if ((tmp = pa_modargs_get_value(ma, "source_name", NULL)))
+        u->default_source_name = pa_xstrdup(tmp);
 
     /* A little bit later than module-stream-restore, module-intended-roles... */
     u->sink_unlink_slot = pa_hook_connect(&m->core->hooks[PA_CORE_HOOK_SINK_UNLINK], PA_HOOK_LATE+20, (pa_hook_cb_t) sink_unlink_hook_callback, u);
@@ -342,6 +377,9 @@ void pa__done(pa_module*m) {
 
     if (!(u = m->userdata))
         return;
+
+    pa_xfree(u->default_sink_name);
+    pa_xfree(u->default_source_name);
 
     if (u->sink_unlink_slot)
         pa_hook_slot_free(u->sink_unlink_slot);
