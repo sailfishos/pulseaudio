@@ -1,0 +1,237 @@
+From 68678a5633c18fe3401c0cad68f8c9262f2faa9f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
+ <juho.hamalainen@tieto.com>
+Date: Mon, 30 Mar 2015 11:28:09 +0300
+Subject: [PATCH 1015/1015] bluez4-device: Don't acquire transport when
+ connecting device.
+
+When creating module-bluez4-device do not acquire transport but start
+the sink and source in suspended state. Then acquire transport normally
+upon first and subsequent use.
+
+Without this change PTS test A2DP TC_SRC_AS_BV_01_I fails.
+
+From bug JB#27276:
+
+PTS takes the AVDTP streaming start for the silence as a sign that IUT
+proceeds with the test case and after idle timeout stream suspend comes
+along, PTS disconnects the audio connection, so trying to stream
+something from the media player after that doesn't have any effect on
+the test case.
+
+Technically speaking the test case does work, but since there's no
+audible sound to check streaming takes place the qualification engineer
+would fail the verification.
+---
+ src/modules/bluetooth/module-bluez4-device.c | 82 +++++++++++++++-------------
+ 1 file changed, 43 insertions(+), 39 deletions(-)
+
+diff --git a/src/modules/bluetooth/module-bluez4-device.c b/src/modules/bluetooth/module-bluez4-device.c
+index 61daa16..361b3ae 100644
+--- a/src/modules/bluetooth/module-bluez4-device.c
++++ b/src/modules/bluetooth/module-bluez4-device.c
+@@ -141,6 +141,7 @@ struct userdata {
+     char *path;
+     pa_bluez4_transport *transport;
+     bool transport_acquired;
++    bool transport_configured;
+     pa_hook_slot *discovery_slot;
+     pa_hook_slot *sink_state_changed_slot;
+     pa_hook_slot *source_state_changed_slot;
+@@ -211,6 +212,9 @@ enum {
+ #define BLUETOOTH_PREFER_HSP "bluetooth.prefer.hsp"
+ 
+ static int init_profile(struct userdata *u);
++static int bt_transport_setup(struct userdata *u);
++static int bt_transport_acquire(struct userdata *u, bool optional);
++static void bt_transport_config(struct userdata *u);
+ 
+ /* from IO thread */
+ static void a2dp_set_bitpool(struct userdata *u, uint8_t bitpool) {
+@@ -363,13 +367,10 @@ static void bt_transport_release(struct userdata *u) {
+     teardown_stream(u);
+ }
+ 
+-static int bt_transport_acquire(struct userdata *u, bool optional) {
++static int transport_acquire(struct userdata *u, bool optional) {
+     pa_assert(u->transport);
+ 
+-    if (u->transport_acquired)
+-        return 0;
+-
+-    pa_log_debug("Acquiring transport %s", u->transport->path);
++    pa_log_debug("Acquiring transport %s%s", u->transport->path, optional ? " (optional)" : "");
+ 
+     u->stream_fd = pa_bluez4_transport_acquire(u->transport, optional, &u->read_link_mtu, &u->write_link_mtu);
+     if (u->stream_fd < 0) {
+@@ -497,8 +498,10 @@ static int sink_process_msg(pa_msgobject *o, int code, void *data, int64_t offse
+                     if (!u->source || !PA_SOURCE_IS_OPENED(u->source->thread_info.state)) {
+                         if (bt_transport_acquire(u, false) < 0)
+                             failed = true;
+-                        else
++                        else {
++                            bt_transport_config(u);
+                             setup_stream(u);
++                        }
+                     }
+                     break;
+ 
+@@ -574,8 +577,10 @@ static int source_process_msg(pa_msgobject *o, int code, void *data, int64_t off
+                     if (!u->sink || !PA_SINK_IS_OPENED(u->sink->thread_info.state)) {
+                         if (bt_transport_acquire(u, false) < 0)
+                             failed = true;
+-                        else
++                        else {
++                            bt_transport_config(u);
+                             setup_stream(u);
++                        }
+                     }
+                     /* We don't resume the smoother here. Instead we
+                      * wait until the first packet arrives */
+@@ -1359,6 +1364,7 @@ static void handle_transport_state_change(struct userdata *u, struct pa_bluez4_t
+ 
+     if (acquire)
+         if (bt_transport_acquire(u, true) >= 0) {
++            bt_transport_config(u);
+             if (u->source) {
+                 pa_log_debug("Resuming source %s, because the bluetooth audio state changed to 'playing'.", u->source->name);
+                 pa_source_suspend(u->source, false, PA_SUSPEND_IDLE|PA_SUSPEND_USER);
+@@ -1491,6 +1497,8 @@ static int sco_over_pcm_state_update(struct userdata *u, bool changed) {
+         if (bt_transport_acquire(u, false) < 0)
+             return -1;
+ 
++        bt_transport_config(u);
++
+         setup_stream(u);
+ 
+         return 0;
+@@ -1651,6 +1659,7 @@ static int add_sink(struct userdata *u) {
+         data.card = u->card;
+         data.name = get_name("sink", u->modargs, u->address, &b);
+         data.namereg_fail = b;
++        data.suspend_cause = PA_SUSPEND_IDLE;
+ 
+         if (pa_modargs_get_proplist(u->modargs, "sink_properties", data.proplist, PA_UPDATE_REPLACE) < 0) {
+             pa_log("Invalid properties");
+@@ -1659,19 +1668,8 @@ static int add_sink(struct userdata *u) {
+         }
+         connect_ports(u, &data, PA_DIRECTION_OUTPUT);
+ 
+-        if (!u->transport_acquired)
+-            switch (u->profile) {
+-                case PA_BLUEZ4_PROFILE_A2DP:
+-                case PA_BLUEZ4_PROFILE_HSP:
+-                    pa_assert_not_reached(); /* Profile switch should have failed */
+-                    break;
+-                case PA_BLUEZ4_PROFILE_HFGW:
+-                    data.suspend_cause = PA_SUSPEND_USER;
+-                    break;
+-                case PA_BLUEZ4_PROFILE_A2DP_SOURCE:
+-                case PA_BLUEZ4_PROFILE_OFF:
+-                    pa_assert_not_reached();
+-            }
++        if (!u->transport_acquired && u->profile == PA_BLUEZ4_PROFILE_HFGW)
++            data.suspend_cause |= PA_SUSPEND_USER;
+ 
+         u->sink = pa_sink_new(u->core, &data, PA_SINK_HARDWARE|PA_SINK_LATENCY);
+         pa_sink_new_data_done(&data);
+@@ -1722,6 +1720,7 @@ static int add_source(struct userdata *u) {
+         data.card = u->card;
+         data.name = get_name("source", u->modargs, u->address, &b);
+         data.namereg_fail = b;
++        data.suspend_cause = PA_SUSPEND_IDLE;
+ 
+         if (pa_modargs_get_proplist(u->modargs, "source_properties", data.proplist, PA_UPDATE_REPLACE) < 0) {
+             pa_log("Invalid properties");
+@@ -1731,19 +1730,8 @@ static int add_source(struct userdata *u) {
+ 
+         connect_ports(u, &data, PA_DIRECTION_INPUT);
+ 
+-        if (!u->transport_acquired)
+-            switch (u->profile) {
+-                case PA_BLUEZ4_PROFILE_HSP:
+-                    pa_assert_not_reached(); /* Profile switch should have failed */
+-                    break;
+-                case PA_BLUEZ4_PROFILE_A2DP_SOURCE:
+-                case PA_BLUEZ4_PROFILE_HFGW:
+-                    data.suspend_cause = PA_SUSPEND_USER;
+-                    break;
+-                case PA_BLUEZ4_PROFILE_A2DP:
+-                case PA_BLUEZ4_PROFILE_OFF:
+-                    pa_assert_not_reached();
+-            }
++        if (!u->transport_acquired && u->profile == PA_BLUEZ4_PROFILE_HFGW)
++            data.suspend_cause |= PA_SUSPEND_USER;
+ 
+         u->source = pa_source_new(u->core, &data, PA_SOURCE_HARDWARE|PA_SOURCE_LATENCY);
+         pa_source_new_data_done(&data);
+@@ -1887,12 +1875,17 @@ static void bt_transport_config_a2dp(struct userdata *u) {
+ }
+ 
+ static void bt_transport_config(struct userdata *u) {
++    if (u->transport_configured)
++        return;
++
+     if (u->profile == PA_BLUEZ4_PROFILE_HSP || u->profile == PA_BLUEZ4_PROFILE_HFGW) {
+         u->sample_spec.format = PA_SAMPLE_S16LE;
+         u->sample_spec.channels = 1;
+         u->sample_spec.rate = 8000;
+     } else
+         bt_transport_config_a2dp(u);
++
++    u->transport_configured = true;
+ }
+ 
+ /* Run from main thread */
+@@ -1910,7 +1903,7 @@ static pa_hook_result_t transport_state_changed_cb(pa_bluez4_discovery *y, pa_bl
+ }
+ 
+ /* Run from main thread */
+-static int setup_transport(struct userdata *u) {
++static int bt_transport_setup(struct userdata *u) {
+     pa_bluez4_transport *t;
+ 
+     pa_assert(u);
+@@ -1926,13 +1919,22 @@ static int setup_transport(struct userdata *u) {
+ 
+     u->transport = t;
+ 
++    return 0;
++}
++
++static int bt_transport_acquire(struct userdata *u, bool optional) {
++    pa_assert(u);
++
++    if (u->transport_acquired) {
++        pa_log_debug("Transport already acquired");
++        return 0;
++    }
++
+     if (u->profile == PA_BLUEZ4_PROFILE_A2DP_SOURCE || u->profile == PA_BLUEZ4_PROFILE_HFGW)
+-        bt_transport_acquire(u, true); /* In case of error, the sink/sources will be created suspended */
+-    else if (bt_transport_acquire(u, false) < 0)
++        transport_acquire(u, optional); /* In case of error, the sink/sources will be created suspended */
++    else if (transport_acquire(u, optional) < 0)
+         return -1; /* We need to fail here until the interactions with module-suspend-on-idle and alike get improved */
+ 
+-    bt_transport_config(u);
+-
+     return 0;
+ }
+ 
+@@ -1942,9 +1944,11 @@ static int init_profile(struct userdata *u) {
+     pa_assert(u);
+     pa_assert(u->profile != PA_BLUEZ4_PROFILE_OFF);
+ 
+-    if (setup_transport(u) < 0)
++    if (bt_transport_setup(u) < 0)
+         return -1;
+ 
++    u->transport_configured = false;
++
+     pa_assert(u->transport);
+ 
+     if (u->profile == PA_BLUEZ4_PROFILE_A2DP ||
+-- 
+1.9.1
+

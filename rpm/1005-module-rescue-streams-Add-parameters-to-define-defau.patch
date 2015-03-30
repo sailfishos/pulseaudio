@@ -2,7 +2,7 @@ From 714927eca8fdaf07d142bf6ce96f364de6535683 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Thu, 10 Apr 2014 09:44:24 +0300
-Subject: [PATCH 1005/1013] module-rescue-streams: Add parameters to define
+Subject: [PATCH 1005/1015] module-rescue-streams: Add parameters to define
  default targets.
 
 If sink_name or source_name are defined for the module, when streams'
@@ -212,5 +212,5 @@ index 7035a35..e7e96b3 100644
          pa_hook_slot_free(u->sink_unlink_slot);
      if (u->source_unlink_slot)
 -- 
-1.8.5.2
+1.9.1
 

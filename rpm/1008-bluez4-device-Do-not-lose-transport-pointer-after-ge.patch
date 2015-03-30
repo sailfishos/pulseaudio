@@ -2,7 +2,7 @@ From 8e812f90473fbc13ec9b7ae7daf61d0ab52014f8 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Thu, 10 Apr 2014 10:27:45 +0300
-Subject: [PATCH 1008/1013] bluez4-device: Do not lose transport pointer after
+Subject: [PATCH 1008/1015] bluez4-device: Do not lose transport pointer after
  getting it.
 
 ---
@@ -24,5 +24,5 @@ index 28ddced..12453e1 100644
  
      if (u->sink) {
 -- 
-1.8.5.2
+1.9.1
 

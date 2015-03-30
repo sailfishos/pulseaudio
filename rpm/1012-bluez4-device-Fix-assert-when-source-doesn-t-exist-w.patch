@@ -2,7 +2,7 @@ From ce456c0c6699109bc9c5ddcfb8a2d2f6ca8a0318 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Thu, 17 Jul 2014 09:53:14 +0300
-Subject: [PATCH 1012/1013] bluez4-device: Fix assert when source doesn't exist
+Subject: [PATCH 1012/1015] bluez4-device: Fix assert when source doesn't exist
  when changing properties.
 
 ---
@@ -26,5 +26,5 @@ index efd0589..32392bf 100644
      pa_proplist_sets(p, "bluetooth.nrec", t->nrec ? "1" : "0");
      pa_source_update_proplist(u->source, PA_UPDATE_REPLACE, p);
 -- 
-1.8.5.2
+1.9.1
 

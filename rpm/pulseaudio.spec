@@ -27,7 +27,9 @@ Patch9:     1010-bluez4-util-Detect-transport-acquire-release-loop.patch
 Patch10:    1011-daemon-Exit-with-0-on-SIGINT-or-SIGTERM.patch
 Patch11:    1012-bluez4-device-Fix-assert-when-source-doesn-t-exist-w.patch
 Patch12:    1013-core-Use-XDG_RUNTIME_DIR-only-if-owned-by-us.patch
-Patch13:    2001-dbus-Use-correct-initialization-for-source-ports-has.patch
+Patch13:    1014-bluez-device-Check-for-transport-suspend-on-profile-.patch
+Patch14:    1015-bluez4-device-Don-t-acquire-transport-when-connectin.patch
+Patch15:    2001-dbus-Use-correct-initialization-for-source-ports-has.patch
 Requires:   udev
 Requires:   libsbc >= 1.0
 Requires(post): /sbin/ldconfig
@@ -139,8 +141,12 @@ to manage the devices in PulseAudio.
 %patch11 -p1
 # 1013-core-Use-XDG_RUNTIME_DIR-only-if-owned-by-us.patch
 %patch12 -p1
-# 2001-dbus-Use-correct-initialization-for-source-ports-has.patch
+# 1014-bluez-device-Check-for-transport-suspend-on-profile-.patch
 %patch13 -p1
+# 1015-bluez4-device-Don-t-acquire-transport-when-connectin.patch
+%patch14 -p1
+# 2001-dbus-Use-correct-initialization-for-source-ports-has.patch
+%patch15 -p1
 
 %build
 echo "%{pulseversion}" > .tarball-version
