@@ -1,7 +1,7 @@
 From 345fb6f1acf1d6b90d10b6c323a6ff7747f6f187 Mon Sep 17 00:00:00 2001
 From: Simonas Leleiva <simonas.leleiva@jollamobile.com>
 Date: Mon, 6 Jan 2014 11:30:06 +0000
-Subject: [PATCH 1001/1013] core: make dependencies compile for 64bit
+Subject: [PATCH 1001/1015] core: make dependencies compile for 64bit
 
 E.g. pulseaudio-policy-enforcement fails on:
 /usr/include/pulsecore/atomic.h:289:2: error: invalid preprocessing directive #warn
@@ -25,5 +25,5 @@ index 419783d..c8a59f2 100644
  /* Adapted from glibc */
  
 -- 
-1.8.5.2
+1.9.1
 

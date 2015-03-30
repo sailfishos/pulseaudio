@@ -1,7 +1,7 @@
 From 851ac7d1b7c196719ead85b17c83b466954d3f40 Mon Sep 17 00:00:00 2001
 From: Tanu Kaskinen <tanu.kaskinen@jollamobile.com>
 Date: Wed, 10 Oct 2012 11:17:04 +0300
-Subject: [PATCH 1003/1013] daemon: Disable automatic shutdown by default.
+Subject: [PATCH 1003/1015] daemon: Disable automatic shutdown by default.
 
 Mer (or rather Nemo) specific patch, not upstreamable.
 ---
@@ -31,5 +31,5 @@ index 2089058..35c13a4 100644
  
  ; dl-search-path = (depends on architecture)
 -- 
-1.8.5.2
+1.9.1
 
