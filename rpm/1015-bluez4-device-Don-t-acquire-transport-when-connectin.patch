@@ -1,4 +1,4 @@
-From 68678a5633c18fe3401c0cad68f8c9262f2faa9f Mon Sep 17 00:00:00 2001
+From f74c97d5526557661955d967f84d7ea690e5f404 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Mon, 30 Mar 2015 11:28:09 +0300
@@ -27,7 +27,7 @@ would fail the verification.
  1 file changed, 43 insertions(+), 39 deletions(-)
 
 diff --git a/src/modules/bluetooth/module-bluez4-device.c b/src/modules/bluetooth/module-bluez4-device.c
-index 61daa16..361b3ae 100644
+index 67f985b..2555b85 100644
 --- a/src/modules/bluetooth/module-bluez4-device.c
 +++ b/src/modules/bluetooth/module-bluez4-device.c
 @@ -141,6 +141,7 @@ struct userdata {
@@ -64,7 +64,7 @@ index 61daa16..361b3ae 100644
  
      u->stream_fd = pa_bluez4_transport_acquire(u->transport, optional, &u->read_link_mtu, &u->write_link_mtu);
      if (u->stream_fd < 0) {
-@@ -497,8 +498,10 @@ static int sink_process_msg(pa_msgobject *o, int code, void *data, int64_t offse
+@@ -495,8 +496,10 @@ static int sink_process_msg(pa_msgobject *o, int code, void *data, int64_t offse
                      if (!u->source || !PA_SOURCE_IS_OPENED(u->source->thread_info.state)) {
                          if (bt_transport_acquire(u, false) < 0)
                              failed = true;
@@ -76,7 +76,7 @@ index 61daa16..361b3ae 100644
                      }
                      break;
  
-@@ -574,8 +577,10 @@ static int source_process_msg(pa_msgobject *o, int code, void *data, int64_t off
+@@ -572,8 +575,10 @@ static int source_process_msg(pa_msgobject *o, int code, void *data, int64_t off
                      if (!u->sink || !PA_SINK_IS_OPENED(u->sink->thread_info.state)) {
                          if (bt_transport_acquire(u, false) < 0)
                              failed = true;
@@ -88,7 +88,7 @@ index 61daa16..361b3ae 100644
                      }
                      /* We don't resume the smoother here. Instead we
                       * wait until the first packet arrives */
-@@ -1359,6 +1364,7 @@ static void handle_transport_state_change(struct userdata *u, struct pa_bluez4_t
+@@ -1357,6 +1362,7 @@ static void handle_transport_state_change(struct userdata *u, struct pa_bluez4_t
  
      if (acquire)
          if (bt_transport_acquire(u, true) >= 0) {
@@ -96,7 +96,7 @@ index 61daa16..361b3ae 100644
              if (u->source) {
                  pa_log_debug("Resuming source %s, because the bluetooth audio state changed to 'playing'.", u->source->name);
                  pa_source_suspend(u->source, false, PA_SUSPEND_IDLE|PA_SUSPEND_USER);
-@@ -1491,6 +1497,8 @@ static int sco_over_pcm_state_update(struct userdata *u, bool changed) {
+@@ -1489,6 +1495,8 @@ static int sco_over_pcm_state_update(struct userdata *u, bool changed) {
          if (bt_transport_acquire(u, false) < 0)
              return -1;
  
@@ -105,7 +105,7 @@ index 61daa16..361b3ae 100644
          setup_stream(u);
  
          return 0;
-@@ -1651,6 +1659,7 @@ static int add_sink(struct userdata *u) {
+@@ -1649,6 +1657,7 @@ static int add_sink(struct userdata *u) {
          data.card = u->card;
          data.name = get_name("sink", u->modargs, u->address, &b);
          data.namereg_fail = b;
@@ -113,7 +113,7 @@ index 61daa16..361b3ae 100644
  
          if (pa_modargs_get_proplist(u->modargs, "sink_properties", data.proplist, PA_UPDATE_REPLACE) < 0) {
              pa_log("Invalid properties");
-@@ -1659,19 +1668,8 @@ static int add_sink(struct userdata *u) {
+@@ -1657,19 +1666,8 @@ static int add_sink(struct userdata *u) {
          }
          connect_ports(u, &data, PA_DIRECTION_OUTPUT);
  
@@ -135,7 +135,7 @@ index 61daa16..361b3ae 100644
  
          u->sink = pa_sink_new(u->core, &data, PA_SINK_HARDWARE|PA_SINK_LATENCY);
          pa_sink_new_data_done(&data);
-@@ -1722,6 +1720,7 @@ static int add_source(struct userdata *u) {
+@@ -1720,6 +1718,7 @@ static int add_source(struct userdata *u) {
          data.card = u->card;
          data.name = get_name("source", u->modargs, u->address, &b);
          data.namereg_fail = b;
@@ -143,7 +143,7 @@ index 61daa16..361b3ae 100644
  
          if (pa_modargs_get_proplist(u->modargs, "source_properties", data.proplist, PA_UPDATE_REPLACE) < 0) {
              pa_log("Invalid properties");
-@@ -1731,19 +1730,8 @@ static int add_source(struct userdata *u) {
+@@ -1729,19 +1728,8 @@ static int add_source(struct userdata *u) {
  
          connect_ports(u, &data, PA_DIRECTION_INPUT);
  
@@ -165,7 +165,7 @@ index 61daa16..361b3ae 100644
  
          u->source = pa_source_new(u->core, &data, PA_SOURCE_HARDWARE|PA_SOURCE_LATENCY);
          pa_source_new_data_done(&data);
-@@ -1887,12 +1875,17 @@ static void bt_transport_config_a2dp(struct userdata *u) {
+@@ -1885,12 +1873,17 @@ static void bt_transport_config_a2dp(struct userdata *u) {
  }
  
  static void bt_transport_config(struct userdata *u) {
@@ -183,7 +183,7 @@ index 61daa16..361b3ae 100644
  }
  
  /* Run from main thread */
-@@ -1910,7 +1903,7 @@ static pa_hook_result_t transport_state_changed_cb(pa_bluez4_discovery *y, pa_bl
+@@ -1908,7 +1901,7 @@ static pa_hook_result_t transport_state_changed_cb(pa_bluez4_discovery *y, pa_bl
  }
  
  /* Run from main thread */
@@ -192,7 +192,7 @@ index 61daa16..361b3ae 100644
      pa_bluez4_transport *t;
  
      pa_assert(u);
-@@ -1926,13 +1919,22 @@ static int setup_transport(struct userdata *u) {
+@@ -1924,13 +1917,22 @@ static int setup_transport(struct userdata *u) {
  
      u->transport = t;
  
@@ -219,7 +219,7 @@ index 61daa16..361b3ae 100644
      return 0;
  }
  
-@@ -1942,9 +1944,11 @@ static int init_profile(struct userdata *u) {
+@@ -1940,9 +1942,11 @@ static int init_profile(struct userdata *u) {
      pa_assert(u);
      pa_assert(u->profile != PA_BLUEZ4_PROFILE_OFF);
  

@@ -1,4 +1,4 @@
-From ecf235968d7e522a292aab1d7988e061793f9571 Mon Sep 17 00:00:00 2001
+From 6c0eb114ee95e892b87d013d33d8aef0ac6ddb20 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Mon, 30 Mar 2015 12:27:41 +0300
@@ -6,14 +6,14 @@ Subject: [PATCH 1014/1015] bluez-device: Check for transport suspend on
  profile change.
 
 ---
- src/modules/bluetooth/module-bluez4-device.c | 27 ++++++++++++++++++++-------
- 1 file changed, 20 insertions(+), 7 deletions(-)
+ src/modules/bluetooth/module-bluez4-device.c | 25 ++++++++++++++++++-------
+ 1 file changed, 18 insertions(+), 7 deletions(-)
 
 diff --git a/src/modules/bluetooth/module-bluez4-device.c b/src/modules/bluetooth/module-bluez4-device.c
-index 32392bf..61daa16 100644
+index 32392bf..67f985b 100644
 --- a/src/modules/bluetooth/module-bluez4-device.c
 +++ b/src/modules/bluetooth/module-bluez4-device.c
-@@ -423,31 +423,42 @@ static int check_proplist(struct userdata *u) {
+@@ -423,27 +423,36 @@ static int check_proplist(struct userdata *u) {
   * Also, if the sink&source are suspended when sco-sink suspend.transport value changes to true,
   * bring sco transport up. When suspend.transport value changes to false while sink&source are suspended,
   * tear down the transport. */
@@ -44,10 +44,8 @@ index 32392bf..61daa16 100644
 -        pa_sink_suspend(s, FALSE, PA_SUSPEND_ALL);
 +        pa_sink_suspend(u->hsp.sco_sink, FALSE, PA_SUSPEND_ALL);
      }
- 
-     return PA_HOOK_OK;
- }
- 
++}
++
 +static pa_hook_result_t update_allow_release_cb(pa_core *c, pa_sink *s, struct userdata *u) {
 +    pa_assert(u);
 +    pa_assert(s);
@@ -56,14 +54,10 @@ index 32392bf..61daa16 100644
 +        return PA_HOOK_OK;
 +
 +    update_allow_release(u);
-+
-+    return PA_HOOK_OK;
-+}
-+
- /* Run from IO thread */
- static int sink_process_msg(pa_msgobject *o, int code, void *data, int64_t offset, pa_memchunk *chunk) {
-     struct userdata *u = PA_SINK(o)->userdata;
-@@ -2131,6 +2142,8 @@ static int card_set_profile(pa_card *c, pa_card_profile *new_profile) {
+ 
+     return PA_HOOK_OK;
+ }
+@@ -2131,6 +2140,8 @@ static int card_set_profile(pa_card *c, pa_card_profile *new_profile) {
          if (start_thread(u) < 0)
              goto off;
  
