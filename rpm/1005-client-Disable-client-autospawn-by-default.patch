@@ -1,8 +1,8 @@
-From 59a1f6ac58db069334e89a0d6633b6c7bc7d9c51 Mon Sep 17 00:00:00 2001
+From def1bea8d5563ef55256d8a715fd616fe28d7c02 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Fri, 4 Oct 2013 12:41:15 +0300
-Subject: [PATCH 1006/1015] client: Disable client autospawn by default.
+Subject: [PATCH 1005/1012] client: Disable client autospawn by default.
 
 Not upstreamable.
 ---
@@ -10,10 +10,10 @@ Not upstreamable.
  1 file changed, 7 insertions(+), 1 deletion(-)
 
 diff --git a/src/pulse/client.conf.in b/src/pulse/client.conf.in
-index 17753b0..86b70b7 100644
+index 26b7790..85bc2be 100644
 --- a/src/pulse/client.conf.in
 +++ b/src/pulse/client.conf.in
-@@ -24,7 +24,13 @@
+@@ -22,7 +22,13 @@
  ; default-server =
  ; default-dbus-server =
  

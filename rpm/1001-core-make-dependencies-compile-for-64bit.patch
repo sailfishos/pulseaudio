@@ -1,7 +1,7 @@
-From 345fb6f1acf1d6b90d10b6c323a6ff7747f6f187 Mon Sep 17 00:00:00 2001
+From 2a52420c2a504c4e9a6a997b9caff0713331eb83 Mon Sep 17 00:00:00 2001
 From: Simonas Leleiva <simonas.leleiva@jollamobile.com>
 Date: Mon, 6 Jan 2014 11:30:06 +0000
-Subject: [PATCH 1001/1015] core: make dependencies compile for 64bit
+Subject: [PATCH 1001/1012] core: make dependencies compile for 64bit
 
 E.g. pulseaudio-policy-enforcement fails on:
 /usr/include/pulsecore/atomic.h:289:2: error: invalid preprocessing directive #warn
@@ -12,10 +12,10 @@ Signed-off-by: Simonas Leleiva <simonas.leleiva@jollamobile.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/src/pulsecore/atomic.h b/src/pulsecore/atomic.h
-index 419783d..c8a59f2 100644
+index 4758c84..54d83e5 100644
 --- a/src/pulsecore/atomic.h
 +++ b/src/pulsecore/atomic.h
-@@ -286,7 +286,7 @@ static inline int pa_atomic_ptr_cmpxchg(pa_atomic_ptr_t *a, void *old_p, void* n
+@@ -284,7 +284,7 @@ static inline int pa_atomic_ptr_cmpxchg(pa_atomic_ptr_t *a, void *old_p, void* n
  
  #elif defined(__GNUC__) && (defined(__amd64__) || defined(__x86_64__))
  
