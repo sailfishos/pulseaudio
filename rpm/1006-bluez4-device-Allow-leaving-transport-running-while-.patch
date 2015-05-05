@@ -1,4 +1,4 @@
-From 3613c763cb914cb252a611ac5f72ce3c2b8d5305 Mon Sep 17 00:00:00 2001
+From 3198cd8e0a614f6487ca19b6e659e6430f4eccfb Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Thu, 10 Apr 2014 10:26:42 +0300
@@ -12,11 +12,11 @@ bluetooth.hsp.prevent.suspend.transport set as true.
 
 Corner-case specific patch, not upstreamable.
 ---
- src/modules/bluetooth/module-bluez4-device.c | 77 +++++++++++++++++++++++++++-
- 1 file changed, 76 insertions(+), 1 deletion(-)
+ src/modules/bluetooth/module-bluez4-device.c | 79 +++++++++++++++++++++++++++-
+ 1 file changed, 78 insertions(+), 1 deletion(-)
 
 diff --git a/src/modules/bluetooth/module-bluez4-device.c b/src/modules/bluetooth/module-bluez4-device.c
-index db69d34..1026b24 100644
+index db69d34..763586e 100644
 --- a/src/modules/bluetooth/module-bluez4-device.c
 +++ b/src/modules/bluetooth/module-bluez4-device.c
 @@ -187,6 +187,9 @@ struct userdata {
@@ -128,7 +128,16 @@ index db69d34..1026b24 100644
      /* Add the card structure. This will also initialize the default profile */
      if (add_card(u) < 0)
          goto fail;
-@@ -2597,6 +2669,9 @@ void pa__done(pa_module *m) {
+@@ -2536,6 +2608,8 @@ int pa__init(pa_module *m) {
+         if (start_thread(u) < 0)
+             goto off;
+ 
++    update_allow_release(u);
++
+     return 0;
+ 
+ off:
+@@ -2597,6 +2671,9 @@ void pa__done(pa_module *m) {
      if (u->transport_speaker_changed_slot)
          pa_hook_slot_free(u->transport_speaker_changed_slot);
  
