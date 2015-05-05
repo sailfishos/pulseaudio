@@ -1,4 +1,4 @@
-From fa652fb6682cadf098266e5e1df9b983a5dbf6da Mon Sep 17 00:00:00 2001
+From 25543f7e265517f9958d9efdb1688d18c05b4033 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Thu, 10 Apr 2014 10:34:06 +0300
@@ -16,7 +16,7 @@ higher priority than A2DP to select HFP initially.
  1 file changed, 24 insertions(+), 4 deletions(-)
 
 diff --git a/src/modules/bluetooth/module-bluez4-device.c b/src/modules/bluetooth/module-bluez4-device.c
-index 2ea0008..4425c33 100644
+index d1c3a88..8ebefef 100644
 --- a/src/modules/bluetooth/module-bluez4-device.c
 +++ b/src/modules/bluetooth/module-bluez4-device.c
 @@ -206,6 +206,8 @@ enum {

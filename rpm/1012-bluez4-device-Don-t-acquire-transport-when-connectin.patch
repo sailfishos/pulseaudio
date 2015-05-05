@@ -1,4 +1,4 @@
-From 840f41fb844200244a3a0ec9148892419c2474f2 Mon Sep 17 00:00:00 2001
+From 3903d0470404bb5307e23a93700c4ae9518da801 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Tue, 7 Apr 2015 13:27:02 +0300
@@ -23,11 +23,11 @@ Technically speaking the test case does work, but since there's no
 audible sound to check streaming takes place the qualification engineer
 would fail the verification.
 ---
- src/modules/bluetooth/module-bluez4-device.c | 82 +++++++++++++++-------------
- 1 file changed, 43 insertions(+), 39 deletions(-)
+ src/modules/bluetooth/module-bluez4-device.c | 85 +++++++++++++++-------------
+ 1 file changed, 46 insertions(+), 39 deletions(-)
 
 diff --git a/src/modules/bluetooth/module-bluez4-device.c b/src/modules/bluetooth/module-bluez4-device.c
-index 593fa09..3854cff 100644
+index d7c8711..312b4ed 100644
 --- a/src/modules/bluetooth/module-bluez4-device.c
 +++ b/src/modules/bluetooth/module-bluez4-device.c
 @@ -139,6 +139,7 @@ struct userdata {
@@ -232,6 +232,16 @@ index 593fa09..3854cff 100644
      pa_assert(u->transport);
  
      if (u->profile == PA_BLUEZ4_PROFILE_A2DP ||
+@@ -1962,6 +1966,9 @@ static int init_profile(struct userdata *u) {
+         if (add_source(u) < 0)
+             r = -1;
+ 
++    if (USE_SCO_OVER_PCM(u))
++        bt_transport_config(u);
++
+     return r;
+ }
+ 
 -- 
 1.9.1
 

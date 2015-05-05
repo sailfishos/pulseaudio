@@ -1,4 +1,4 @@
-From 9c12232ddf3a59486a9320608a56c891729fca12 Mon Sep 17 00:00:00 2001
+From 340f78e9ea09cde2639d24b4f2fcaa7b15163fab Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Tue, 7 Apr 2015 13:25:59 +0300
@@ -10,7 +10,7 @@ Subject: [PATCH 1011/1012] bluez4-device: Check for transport suspend on
  1 file changed, 18 insertions(+), 7 deletions(-)
 
 diff --git a/src/modules/bluetooth/module-bluez4-device.c b/src/modules/bluetooth/module-bluez4-device.c
-index 5e8b828..593fa09 100644
+index 6ce10d8..d7c8711 100644
 --- a/src/modules/bluetooth/module-bluez4-device.c
 +++ b/src/modules/bluetooth/module-bluez4-device.c
 @@ -421,27 +421,36 @@ static int check_proplist(struct userdata *u) {
