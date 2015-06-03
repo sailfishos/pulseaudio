@@ -25,8 +25,7 @@ Patch6:     1007-bluez4-device-Do-not-lose-transport-pointer-after-ge.patch
 Patch7:     1008-bluez4-device-Default-to-using-A2DP-profile-initiall.patch
 Patch8:     1009-bluez4-util-Detect-transport-acquire-release-loop.patch
 Patch9:     1010-bluez4-device-Fix-assert-when-source-doesn-t-exist-w.patch
-Patch10:    1011-bluez4-device-Check-for-transport-suspend-on-profile.patch
-Patch11:    1012-bluez4-device-Don-t-acquire-transport-when-connectin.patch
+Patch10:    1011-bluez4-device-Don-t-acquire-transport-when-connectin.patch
 # Patches pending inclusion to upstream
 Patch12:    2001-module-rescue-streams-Add-parameters-to-define-defau.patch
 Patch13:    2002-daemon-Exit-with-0-on-SIGINT-or-SIGTERM.patch
@@ -136,10 +135,9 @@ to manage the devices in PulseAudio.
 %patch8 -p1
 # 1010-bluez4-device-Fix-assert-when-source-doesn-t-exist-w.patch
 %patch9 -p1
-# 1011-bluez4-device-Check-for-transport-suspend-on-profile.patch
+# 1011-bluez4-device-Don-t-acquire-transport-when-connectin.patch
 %patch10 -p1
-# 1012-bluez4-device-Don-t-acquire-transport-when-connectin.patch
-%patch11 -p1
+
 # 2001-module-rescue-streams-Add-parameters-to-define-defau.patch
 %patch12 -p1
 # 2002-daemon-Exit-with-0-on-SIGINT-or-SIGTERM.patch
@@ -158,12 +156,14 @@ export CXXFLAGS="$CXXFLAGS -mfpu=neon"
 
 %if %{with X11}
 %configure --disable-static \
+    --disable-openssl \
 %ifarch %{arm}
     --enable-neon-opt \
 %endif
     --disable-gconf
 %else
 %configure --disable-static \
+    --disable-openssl \
 %ifarch %{arm}
     --enable-neon-opt \
 %endif
