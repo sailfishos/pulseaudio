@@ -2,7 +2,7 @@ From a26713acf58a39fa1a51cae3e85f5dc391100f24 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Thu, 5 Feb 2015 11:00:52 +0200
-Subject: [PATCH 1002/1012] build: Install pulsecore headers.
+Subject: [PATCH 1002/1011] build: Install pulsecore headers.
 
 This is for building out-of-tree modules. Upstream doesn't want to
 support out-of-tree modules, so this patch is not upstreamable.

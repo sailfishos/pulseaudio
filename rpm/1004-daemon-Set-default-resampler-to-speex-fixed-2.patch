@@ -2,7 +2,7 @@ From 7e5a0c106c34a67a50acc0fa87c1b1af0743b42c Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Thu, 10 Apr 2014 09:41:00 +0300
-Subject: [PATCH 1004/1012] daemon: Set default resampler to speex fixed 2.
+Subject: [PATCH 1004/1011] daemon: Set default resampler to speex fixed 2.
 
 ---
  src/daemon/daemon.conf.in | 18 +++++++++++++++++-

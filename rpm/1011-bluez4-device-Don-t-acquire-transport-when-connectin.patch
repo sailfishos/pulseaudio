@@ -1,8 +1,8 @@
-From 3903d0470404bb5307e23a93700c4ae9518da801 Mon Sep 17 00:00:00 2001
+From 06e30a4a4df64bbcaae2fa816d295ce09043417f Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Tue, 7 Apr 2015 13:27:02 +0300
-Subject: [PATCH 1012/1012] bluez4-device: Don't acquire transport when
+Subject: [PATCH 1011/1011] bluez4-device: Don't acquire transport when
  connecting device.
 
 When creating module-bluez4-device do not acquire transport but start
@@ -23,22 +23,14 @@ Technically speaking the test case does work, but since there's no
 audible sound to check streaming takes place the qualification engineer
 would fail the verification.
 ---
- src/modules/bluetooth/module-bluez4-device.c | 85 +++++++++++++++-------------
- 1 file changed, 46 insertions(+), 39 deletions(-)
+ src/modules/bluetooth/module-bluez4-device.c | 92 +++++++++++++++-------------
+ 1 file changed, 48 insertions(+), 44 deletions(-)
 
 diff --git a/src/modules/bluetooth/module-bluez4-device.c b/src/modules/bluetooth/module-bluez4-device.c
-index d7c8711..312b4ed 100644
+index 2c3c308..8ca16b9 100644
 --- a/src/modules/bluetooth/module-bluez4-device.c
 +++ b/src/modules/bluetooth/module-bluez4-device.c
-@@ -139,6 +139,7 @@ struct userdata {
-     char *path;
-     pa_bluez4_transport *transport;
-     bool transport_acquired;
-+    bool transport_configured;
-     pa_hook_slot *discovery_slot;
-     pa_hook_slot *sink_state_changed_slot;
-     pa_hook_slot *source_state_changed_slot;
-@@ -209,6 +210,9 @@ enum {
+@@ -208,6 +208,9 @@ enum {
  #define BLUETOOTH_PREFER_HSP "bluetooth.prefer.hsp"
  
  static int init_profile(struct userdata *u);
@@ -48,7 +40,7 @@ index d7c8711..312b4ed 100644
  
  /* from IO thread */
  static void a2dp_set_bitpool(struct userdata *u, uint8_t bitpool) {
-@@ -361,13 +365,10 @@ static void bt_transport_release(struct userdata *u) {
+@@ -360,13 +363,10 @@ static void bt_transport_release(struct userdata *u) {
      teardown_stream(u);
  }
  
@@ -64,48 +56,68 @@ index d7c8711..312b4ed 100644
  
      u->stream_fd = pa_bluez4_transport_acquire(u->transport, optional, &u->read_link_mtu, &u->write_link_mtu);
      if (u->stream_fd < 0) {
-@@ -493,8 +494,10 @@ static int sink_process_msg(pa_msgobject *o, int code, void *data, int64_t offse
-                     if (!u->source || !PA_SOURCE_IS_OPENED(u->source->thread_info.state)) {
-                         if (bt_transport_acquire(u, false) < 0)
-                             failed = true;
--                        else
-+                        else {
-+                            bt_transport_config(u);
-                             setup_stream(u);
-+                        }
-                     }
-                     break;
+@@ -1394,8 +1394,11 @@ static void sink_set_volume_cb(pa_sink *s) {
+     k = pa_sprintf_malloc("bluetooth-device@%p", (void*) s);
+     u = pa_shared_get(s->core, k);
+     pa_xfree(k);
++    if (!u) {
++        pa_log("sink_set_volume_cb: SCO shared device disappeared");
++        return;
++    }
  
-@@ -570,8 +573,10 @@ static int source_process_msg(pa_msgobject *o, int code, void *data, int64_t off
-                     if (!u->sink || !PA_SINK_IS_OPENED(u->sink->thread_info.state)) {
-                         if (bt_transport_acquire(u, false) < 0)
-                             failed = true;
--                        else
-+                        else {
-+                            bt_transport_config(u);
-                             setup_stream(u);
-+                        }
-                     }
-                     /* We don't resume the smoother here. Instead we
-                      * wait until the first packet arrives */
-@@ -1359,6 +1364,7 @@ static void handle_transport_state_change(struct userdata *u, struct pa_bluez4_t
+-    pa_assert(u);
+     pa_assert(u->sink == s);
+     pa_assert(u->profile == PA_BLUEZ4_PROFILE_HSP);
+     pa_assert(u->transport);
+@@ -1421,8 +1424,11 @@ static void source_set_volume_cb(pa_source *s) {
+     k = pa_sprintf_malloc("bluetooth-device@%p", (void*) s);
+     u = pa_shared_get(s->core, k);
+     pa_xfree(k);
++    if (!u) {
++        pa_log("source_set_volume_cb: SCO shared device disappeared");
++        return;
++    }
  
-     if (acquire)
-         if (bt_transport_acquire(u, true) >= 0) {
-+            bt_transport_config(u);
-             if (u->source) {
-                 pa_log_debug("Resuming source %s, because the bluetooth audio state changed to 'playing'.", u->source->name);
-                 pa_source_suspend(u->source, false, PA_SUSPEND_IDLE|PA_SUSPEND_USER);
-@@ -1494,6 +1500,8 @@ static int sco_over_pcm_state_update(struct userdata *u, bool changed) {
-         if (bt_transport_acquire(u, false) < 0)
-             return -1;
+-    pa_assert(u);
+     pa_assert(u->source == s);
+     pa_assert(u->profile == PA_BLUEZ4_PROFILE_HSP);
+     pa_assert(u->transport);
+@@ -1467,11 +1473,12 @@ static char *get_name(const char *type, pa_modargs *ma, const char *device_id, c
+         return pa_sprintf_malloc("bluez_%s.%s", type, n);
+ }
  
-+        bt_transport_config(u);
-+
-         setup_stream(u);
+-static int sco_over_pcm_state_update(struct userdata *u, bool changed) {
++static int sco_over_pcm_state_update(struct userdata *u, bool initial, bool changed) {
+     pa_assert(u);
+     pa_assert(USE_SCO_OVER_PCM(u));
  
-         return 0;
-@@ -1654,6 +1662,7 @@ static int add_sink(struct userdata *u) {
+-    if (PA_SINK_IS_OPENED(pa_sink_get_state(u->hsp.sco_sink)) ||
++    if (initial ||
++        PA_SINK_IS_OPENED(pa_sink_get_state(u->hsp.sco_sink)) ||
+         PA_SOURCE_IS_OPENED(pa_source_get_state(u->hsp.sco_source))) {
+ 
+         if (u->stream_fd >= 0)
+@@ -1515,7 +1522,8 @@ static pa_hook_result_t sink_state_changed_cb(pa_core *c, pa_sink *s, struct use
+     if (!USE_SCO_OVER_PCM(u) || s != u->hsp.sco_sink)
+         return PA_HOOK_OK;
+ 
+-    sco_over_pcm_state_update(u, true);
++    pa_log_debug("bluez4 SCO sink state changed");
++    sco_over_pcm_state_update(u, false, true);
+ 
+     return PA_HOOK_OK;
+ }
+@@ -1528,7 +1536,8 @@ static pa_hook_result_t source_state_changed_cb(pa_core *c, pa_source *s, struct
+     if (!USE_SCO_OVER_PCM(u) || s != u->hsp.sco_source)
+         return PA_HOOK_OK;
+ 
+-    sco_over_pcm_state_update(u, true);
++    pa_log_debug("bluez4 SCO source state changed");
++    sco_over_pcm_state_update(u, false, true);
+ 
+     return PA_HOOK_OK;
+ }
+@@ -1646,6 +1655,7 @@ static int add_sink(struct userdata *u) {
          data.card = u->card;
          data.name = get_name("sink", u->modargs, u->address, pa_bluez4_profile_to_string(u->profile), &b);
          data.namereg_fail = b;
@@ -113,7 +125,7 @@ index d7c8711..312b4ed 100644
  
          if (pa_modargs_get_proplist(u->modargs, "sink_properties", data.proplist, PA_UPDATE_REPLACE) < 0) {
              pa_log("Invalid properties");
-@@ -1662,19 +1671,8 @@ static int add_sink(struct userdata *u) {
+@@ -1654,19 +1664,8 @@ static int add_sink(struct userdata *u) {
          }
          connect_ports(u, &data, PA_DIRECTION_OUTPUT);
  
@@ -135,7 +147,7 @@ index d7c8711..312b4ed 100644
  
          u->sink = pa_sink_new(u->core, &data, PA_SINK_HARDWARE|PA_SINK_LATENCY);
          pa_sink_new_data_done(&data);
-@@ -1725,6 +1723,7 @@ static int add_source(struct userdata *u) {
+@@ -1717,6 +1716,7 @@ static int add_source(struct userdata *u) {
          data.card = u->card;
          data.name = get_name("source", u->modargs, u->address, pa_bluez4_profile_to_string(u->profile), &b);
          data.namereg_fail = b;
@@ -143,7 +155,7 @@ index d7c8711..312b4ed 100644
  
          if (pa_modargs_get_proplist(u->modargs, "source_properties", data.proplist, PA_UPDATE_REPLACE) < 0) {
              pa_log("Invalid properties");
-@@ -1734,19 +1733,8 @@ static int add_source(struct userdata *u) {
+@@ -1726,19 +1726,8 @@ static int add_source(struct userdata *u) {
  
          connect_ports(u, &data, PA_DIRECTION_INPUT);
  
@@ -165,25 +177,7 @@ index d7c8711..312b4ed 100644
  
          u->source = pa_source_new(u->core, &data, PA_SOURCE_HARDWARE|PA_SOURCE_LATENCY);
          pa_source_new_data_done(&data);
-@@ -1890,12 +1878,17 @@ static void bt_transport_config_a2dp(struct userdata *u) {
- }
- 
- static void bt_transport_config(struct userdata *u) {
-+    if (u->transport_configured)
-+        return;
-+
-     if (u->profile == PA_BLUEZ4_PROFILE_HSP || u->profile == PA_BLUEZ4_PROFILE_HFGW) {
-         u->sample_spec.format = PA_SAMPLE_S16LE;
-         u->sample_spec.channels = 1;
-         u->sample_spec.rate = 8000;
-     } else
-         bt_transport_config_a2dp(u);
-+
-+    u->transport_configured = true;
- }
- 
- /* Run from main thread */
-@@ -1913,7 +1906,7 @@ static pa_hook_result_t transport_state_changed_cb(pa_bluez4_discovery *y, pa_bl
+@@ -1905,7 +1894,7 @@ static pa_hook_result_t transport_state_changed_cb(pa_bluez4_discovery *y, pa_bl
  }
  
  /* Run from main thread */
@@ -192,7 +186,7 @@ index d7c8711..312b4ed 100644
      pa_bluez4_transport *t;
  
      pa_assert(u);
-@@ -1929,13 +1922,22 @@ static int setup_transport(struct userdata *u) {
+@@ -1921,13 +1910,22 @@ static int setup_transport(struct userdata *u) {
  
      u->transport = t;
  
@@ -219,7 +213,7 @@ index d7c8711..312b4ed 100644
      return 0;
  }
  
-@@ -1945,9 +1947,11 @@ static int init_profile(struct userdata *u) {
+@@ -1937,11 +1935,13 @@ static int init_profile(struct userdata *u) {
      pa_assert(u);
      pa_assert(u->profile != PA_BLUEZ4_PROFILE_OFF);
  
@@ -227,20 +221,39 @@ index d7c8711..312b4ed 100644
 +    if (bt_transport_setup(u) < 0)
          return -1;
  
-+    u->transport_configured = false;
-+
      pa_assert(u->transport);
  
-     if (u->profile == PA_BLUEZ4_PROFILE_A2DP ||
-@@ -1962,6 +1966,9 @@ static int init_profile(struct userdata *u) {
-         if (add_source(u) < 0)
-             r = -1;
- 
-+    if (USE_SCO_OVER_PCM(u))
-+        bt_transport_config(u);
++    bt_transport_config(u);
 +
-     return r;
- }
+     if (u->profile == PA_BLUEZ4_PROFILE_A2DP ||
+         u->profile == PA_BLUEZ4_PROFILE_HSP ||
+         u->profile == PA_BLUEZ4_PROFILE_HFGW)
+@@ -1963,6 +1963,8 @@ static void stop_thread(struct userdata *u) {
+ 
+     pa_assert(u);
+ 
++    pa_log_debug("bluez4 stop thread");
++
+     if (u->sink && !USE_SCO_OVER_PCM(u))
+         pa_sink_unlink(u->sink);
+ 
+@@ -2032,7 +2034,8 @@ static int start_thread(struct userdata *u) {
+     pa_thread_mq_init(&u->thread_mq, u->core->mainloop, u->rtpoll);
+ 
+     if (USE_SCO_OVER_PCM(u)) {
+-        if (sco_over_pcm_state_update(u, false) < 0) {
++        pa_log_debug("bluez4 start SCO thread");
++        if (sco_over_pcm_state_update(u, true, false) < 0) {
+             char *k;
+ 
+             if (u->sink) {
+@@ -2047,6 +2050,7 @@ static int start_thread(struct userdata *u) {
+                 pa_xfree(k);
+                 u->source = NULL;
+             }
++            pa_log("bluez4 start SCO thread failed, removing the sink and source");
+             return -1;
+         }
  
 -- 
 1.9.1
