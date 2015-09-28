@@ -44,8 +44,6 @@ BuildRequires:  pkgconfig(dbus-1) >= 1.4.12
 BuildRequires:  pkgconfig(glib-2.0) >= 2.4.0
 BuildRequires:  pkgconfig(json-c) >= 0.12
 BuildRequires:  pkgconfig(libasyncns) >= 0.1
-BuildRequires:  pkgconfig(libsystemd-daemon)
-BuildRequires:  pkgconfig(libsystemd-login)
 BuildRequires:  pkgconfig(libudev) >= 143
 BuildRequires:  pkgconfig(orc-0.4) >= 0.4.11
 BuildRequires:  pkgconfig(sndfile) >= 1.0.20
@@ -64,6 +62,8 @@ BuildRequires:  libcap-devel
 BuildRequires:  libtool >= 2.4
 BuildRequires:  libtool-ltdl-devel
 BuildRequires:  fdupes
+BuildRequires:  systemd-libs
+BuildRequires:  systemd-devel
 
 %description
 PulseAudio is a layer between audio devices and applications. It removes
