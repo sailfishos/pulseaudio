@@ -106,16 +106,6 @@ Requires:   %{name} = %{version}-%{release}
 %description esound
 Makes PulseAudio a drop-in replacement for ESound.
 
-%package kde
-Summary:    KDE specific configuration for PulseAudio
-Group:      Multimedia/PulseAudio
-Requires:   %{name} = %{version}-%{release}
-
-%description kde
-Loads module-device-manager automatically at user session
-initialization time. module-device-manager makes it possible for Phonon
-to manage the devices in PulseAudio.
-
 %prep
 %setup -q -n %{name}-%{version}/pulseaudio
 
@@ -370,11 +360,3 @@ ln -s ../pulseaudio.service %{buildroot}/usr/lib/systemd/user/user-session.targe
 %{_libdir}/pulse-%{pulseversion}/modules/module-esound-compat-spawnpid.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-esound-protocol-tcp.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-esound-protocol-unix.so
-
-%if %{with X11}
-%files kde
-%defattr(-,root,root,-)
-%doc %{_mandir}/man1/start-pulseaudio-kde.1.gz
-%config %{_sysconfdir}/xdg/autostart/pulseaudio-kde.desktop
-%{_bindir}/start-pulseaudio-kde
-%endif
