@@ -1,9 +1,9 @@
-From f4272259c32f5bd595e2f254af1efe9aa01f4d24 Mon Sep 17 00:00:00 2001
+From de9212e0571f1cb8cfa3654e228499496c26d9f7 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Thu, 5 Feb 2015 11:05:49 +0200
-Subject: [PATCH 2001/2003] module-rescue-streams: Add parameters to define 
- default targets.
+Subject: [PATCH] module-rescue-streams: Add parameters to define  default
+ targets.
 
 If sink_name or source_name are defined for the module, when streams'
 sink our source is destroyed, try to move the stream first to
@@ -15,7 +15,7 @@ default {sink,source}.
  1 file changed, 49 insertions(+), 11 deletions(-)
 
 diff --git a/src/modules/module-rescue-streams.c b/src/modules/module-rescue-streams.c
-index e20fdf8..703426e 100644
+index 901dabd..acab73d 100644
 --- a/src/modules/module-rescue-streams.c
 +++ b/src/modules/module-rescue-streams.c
 @@ -37,12 +37,20 @@ PA_MODULE_AUTHOR("Lennart Poettering");
@@ -136,7 +136,7 @@ index e20fdf8..703426e 100644
      if (def && def != skip && pa_source_output_may_move_to(o, def))
          return def;
  
-@@ -256,12 +282,13 @@ static pa_source* find_evacuation_source(pa_core *c, pa_source_output *o, pa_sou
+@@ -257,12 +283,13 @@ static pa_source* find_evacuation_source(pa_core *c, pa_source_output *o, pa_sou
      return target;
  }
  
@@ -151,7 +151,7 @@ index e20fdf8..703426e 100644
  
      /* There's no point in doing anything if the core is shut down anyway */
      if (c->state == PA_CORE_SHUTDOWN)
-@@ -275,7 +302,7 @@ static pa_hook_result_t source_unlink_hook_callback(pa_core *c, pa_source *sourc
+@@ -276,7 +303,7 @@ static pa_hook_result_t source_unlink_hook_callback(pa_core *c, pa_source *sourc
      PA_IDXSET_FOREACH(o, source->outputs, idx) {
          pa_source *target;
  
@@ -160,7 +160,7 @@ index e20fdf8..703426e 100644
              continue;
  
          if (pa_source_output_move_to(o, target, false) < 0)
-@@ -289,17 +316,18 @@ static pa_hook_result_t source_unlink_hook_callback(pa_core *c, pa_source *sourc
+@@ -290,17 +317,18 @@ static pa_hook_result_t source_unlink_hook_callback(pa_core *c, pa_source *sourc
      return PA_HOOK_OK;
  }
  
@@ -181,7 +181,7 @@ index e20fdf8..703426e 100644
          return PA_HOOK_OK;
  
      if (pa_source_output_finish_move(i, target, false) < 0) {
-@@ -317,6 +345,7 @@ static pa_hook_result_t source_output_move_fail_hook_callback(pa_core *c, pa_sou
+@@ -318,6 +346,7 @@ static pa_hook_result_t source_output_move_fail_hook_callback(pa_core *c, pa_sou
  int pa__init(pa_module*m) {
      pa_modargs *ma;
      struct userdata *u;
@@ -189,7 +189,7 @@ index e20fdf8..703426e 100644
  
      pa_assert(m);
  
-@@ -325,7 +354,13 @@ int pa__init(pa_module*m) {
+@@ -326,7 +355,13 @@ int pa__init(pa_module*m) {
          return -1;
      }
  
@@ -204,7 +204,7 @@ index e20fdf8..703426e 100644
  
      /* A little bit later than module-stream-restore, module-intended-roles... */
      u->sink_unlink_slot = pa_hook_connect(&m->core->hooks[PA_CORE_HOOK_SINK_UNLINK], PA_HOOK_LATE+20, (pa_hook_cb_t) sink_unlink_hook_callback, u);
-@@ -346,6 +381,9 @@ void pa__done(pa_module*m) {
+@@ -347,6 +382,9 @@ void pa__done(pa_module*m) {
      if (!(u = m->userdata))
          return;
  
@@ -215,5 +215,5 @@ index e20fdf8..703426e 100644
          pa_hook_slot_free(u->sink_unlink_slot);
      if (u->source_unlink_slot)
 -- 
-1.9.1
+2.1.4
 

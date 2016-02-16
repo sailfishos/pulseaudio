@@ -1,4 +1,4 @@
-From 7e5a0c106c34a67a50acc0fa87c1b1af0743b42c Mon Sep 17 00:00:00 2001
+From 67f0a24e847c59f8284cc324007ac6822315943c Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Thu, 10 Apr 2014 09:41:00 +0300
@@ -9,7 +9,7 @@ Subject: [PATCH 1004/1011] daemon: Set default resampler to speex fixed 2.
  1 file changed, 17 insertions(+), 1 deletion(-)
 
 diff --git a/src/daemon/daemon.conf.in b/src/daemon/daemon.conf.in
-index 8849399..1628173 100644
+index 49a4da4..353bbaa 100644
 --- a/src/daemon/daemon.conf.in
 +++ b/src/daemon/daemon.conf.in
 @@ -63,7 +63,23 @@ exit-idle-time = -1
@@ -35,8 +35,8 @@ index 8849399..1628173 100644
 +resample-method = speex-fixed-2
 +
  ; enable-remixing = yes
- ; enable-lfe-remixing = no
- 
+ ; enable-lfe-remixing = yes
+ ; lfe-crossover-freq = 120
 -- 
-1.9.1
+2.1.4
 

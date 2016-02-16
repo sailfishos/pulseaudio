@@ -1,4 +1,4 @@
-From 77ba4319e471a5ef4e14df41f7a1d624f7d5e600 Mon Sep 17 00:00:00 2001
+From bc96260bc9be56177e579846f411c2edce2d3032 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Thu, 17 Jul 2014 09:53:14 +0300
@@ -10,10 +10,10 @@ Subject: [PATCH 1010/1011] bluez4-device: Fix assert when source doesn't exist
  1 file changed, 5 insertions(+)
 
 diff --git a/src/modules/bluetooth/module-bluez4-device.c b/src/modules/bluetooth/module-bluez4-device.c
-index f5a941d..2c3c308 100644
+index 366538d..8004abb 100644
 --- a/src/modules/bluetooth/module-bluez4-device.c
 +++ b/src/modules/bluetooth/module-bluez4-device.c
-@@ -1542,6 +1542,11 @@ static pa_hook_result_t transport_nrec_changed_cb(pa_bluez4_discovery *y, pa_blu
+@@ -1539,6 +1539,11 @@ static pa_hook_result_t transport_nrec_changed_cb(pa_bluez4_discovery *y, pa_blu
      if (t != u->transport)
          return PA_HOOK_OK;
  
@@ -26,5 +26,5 @@ index f5a941d..2c3c308 100644
      pa_proplist_sets(p, "bluetooth.nrec", t->nrec ? "1" : "0");
      pa_source_update_proplist(u->source, PA_UPDATE_REPLACE, p);
 -- 
-1.9.1
+2.1.4
 

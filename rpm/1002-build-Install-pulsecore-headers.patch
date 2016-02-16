@@ -1,4 +1,4 @@
-From a26713acf58a39fa1a51cae3e85f5dc391100f24 Mon Sep 17 00:00:00 2001
+From 620f6c09e05203e4f999ed7abb80e175deae71f1 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Thu, 5 Feb 2015 11:00:52 +0200
@@ -13,15 +13,15 @@ Mer/Nemo should try to not depend on any out-of-tree modules.
  libpulse-simple.pc.in |   2 +-
  libpulse.pc.in        |   2 +-
  pulsecore.pc.in       |  12 +++++
- src/Makefile.am       | 130 ++++++++++++++++++++++++++++++++++++++++++++++++++
- 6 files changed, 146 insertions(+), 3 deletions(-)
+ src/Makefile.am       | 137 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ 6 files changed, 153 insertions(+), 3 deletions(-)
  create mode 100644 pulsecore.pc.in
 
 diff --git a/Makefile.am b/Makefile.am
-index 75b784f..f0f591b 100644
+index 13bc469..9771fac 100644
 --- a/Makefile.am
 +++ b/Makefile.am
-@@ -49,7 +49,7 @@ dist_vapi_DATA = \
+@@ -53,7 +53,7 @@ dist_vapi_DATA = \
  		vala/libpulse-simple.deps vala/libpulse-simple.vapi
  
  pkgconfigdir = $(libdir)/pkgconfig
@@ -31,10 +31,10 @@ index 75b784f..f0f591b 100644
  if HAVE_GLIB20
  pkgconfig_DATA += \
 diff --git a/configure.ac b/configure.ac
-index 3c71472..6f96312 100644
+index 9250c05..dfed015 100644
 --- a/configure.ac
 +++ b/configure.ac
-@@ -1446,6 +1446,7 @@ man/Makefile
+@@ -1485,6 +1485,7 @@ man/Makefile
  libpulse.pc
  libpulse-simple.pc
  libpulse-mainloop-glib.pc
@@ -87,10 +87,18 @@ index 0000000..b5b4a9b
 +Libs: -L${libdir} -L${libdir}/pulseaudio -L${libdir}/pulse-@PA_MAJORMINOR@/modules -lpulsecore-@PA_MAJORMINOR@ -lpulsecommon-@PA_MAJORMINOR@ -lpulse @PTHREAD_LIBS@
 +Cflags: -D_REENTRANT -D__INCLUDED_FROM_PULSE_AUDIO -DPA_DEFAULT_CONFIG_DIR=\"@PA_DEFAULT_CONFIG_DIR@\" -I${includedir}
 diff --git a/src/Makefile.am b/src/Makefile.am
-index 5cb5564..fb71693 100644
+index b0ca2bc..088dd93 100644
 --- a/src/Makefile.am
 +++ b/src/Makefile.am
-@@ -779,6 +779,136 @@ libpulsecommon_@PA_MAJORMINOR@_la_LIBADD += $(DBUS_LIBS)
+@@ -23,6 +23,7 @@
+ 
+ pulseincludedir=$(includedir)/pulse
+ pulsecoreincludedir=$(includedir)/pulsecore
++pulsecorefilterincludedir=$(includedir)/pulsecore/filter
+ pulselibexecdir=$(libexecdir)/pulse
+ if HAVE_X11
+ xdgautostartdir=$(sysconfdir)/xdg/autostart
+@@ -791,6 +792,142 @@ libpulsecommon_@PA_MAJORMINOR@_la_LIBADD += $(DBUS_LIBS)
  endif
  
  ###################################
@@ -219,14 +227,20 @@ index 5cb5564..fb71693 100644
 +		pulsecore/thread-mq.h \
 +		pulsecore/time-smoother.h \
 +		pulsecore/tokenizer.h \
++		pulsecore/typedefs.h \
 +		pulsecore/usergroup.h \
 +		pulsecore/x11prop.h \
 +		pulsecore/x11wrap.h
++
++pulsecorefilterinclude_HEADERS = \
++		pulsecore/filter/biquad.h \
++		pulsecore/filter/crossover.h \
++		pulsecore/filter/lfe-filter.h
 +
 +###################################
  #         Client library          #
  ###################################
  
 -- 
-1.9.1
+2.1.4
 
