@@ -3,10 +3,10 @@
 
 Name:       pulseaudio
 
-%define pulseversion 6.0
+%define pulseversion 8.0
 
 Summary:    General purpose sound server
-Version:    6.0
+Version:    %{pulseversion}
 Release:    1
 Group:      Multimedia/PulseAudio
 License:    LGPLv2+
@@ -14,26 +14,20 @@ URL:        http://pulseaudio.org
 Source0:    http://freedesktop.org/software/pulseaudio/releases/pulseaudio-%{version}.tar.xz
 Source1:    90-pulse.conf
 Source2:    pulseaudio.service
-# Patches backported from upstream
-Patch0:     0001-pstream-Don-t-split-non-SHM-memblocks.patch
-Patch1:     0002-protocol-native-Re-enable-srbchannel.patch
-Patch2:     0003-pstream-Remove-unnecessary-if-condition.patch
 # Patches specific to Mer version
-Patch3:     1001-core-make-dependencies-compile-for-64bit.patch
-Patch4:     1002-build-Install-pulsecore-headers.patch
-Patch5:     1003-daemon-Disable-automatic-shutdown-by-default.patch
-Patch6:     1004-daemon-Set-default-resampler-to-speex-fixed-2.patch
-Patch7:     1005-client-Disable-client-autospawn-by-default.patch
-Patch8:     1006-bluez4-device-Allow-leaving-transport-running-while-.patch
-Patch9:     1007-bluez4-device-Do-not-lose-transport-pointer-after-ge.patch
-Patch10:    1008-bluez4-device-Default-to-using-A2DP-profile-initiall.patch
-Patch11:    1009-bluez4-util-Detect-transport-acquire-release-loop.patch
-Patch12:    1010-bluez4-device-Fix-assert-when-source-doesn-t-exist-w.patch
-Patch13:    1011-bluez4-device-Don-t-acquire-transport-when-connectin.patch
+Patch0:     1001-core-make-dependencies-compile-for-64bit.patch
+Patch1:     1002-build-Install-pulsecore-headers.patch
+Patch2:     1003-daemon-Disable-automatic-shutdown-by-default.patch
+Patch3:     1004-daemon-Set-default-resampler-to-speex-fixed-2.patch
+Patch4:     1005-client-Disable-client-autospawn-by-default.patch
+Patch5:     1006-bluez4-device-Allow-leaving-transport-running-while-.patch
+Patch6:     1007-bluez4-device-Do-not-lose-transport-pointer-after-ge.patch
+Patch7:     1008-bluez4-device-Default-to-using-A2DP-profile-initiall.patch
+Patch8:     1009-bluez4-util-Detect-transport-acquire-release-loop.patch
+Patch9:     1010-bluez4-device-Fix-assert-when-source-doesn-t-exist-w.patch
+Patch10:    1011-bluez4-device-Don-t-acquire-transport-when-connectin.patch
 # Patches pending inclusion to upstream
-Patch14:    2001-module-rescue-streams-Add-parameters-to-define-defau.patch
-Patch15:    2002-daemon-Exit-with-0-on-SIGINT-or-SIGTERM.patch
-Patch16:    2003-dbus-Use-hooks-for-all-events.patch
+Patch11:    2001-module-rescue-streams-Add-parameters-to-define-defau.patch
 Requires:   udev
 Requires:   libsbc >= 1.0
 Requires(post): /sbin/ldconfig
@@ -119,42 +113,31 @@ to manage the devices in PulseAudio.
 %prep
 %setup -q -n %{name}-%{version}/pulseaudio
 
-# 0001-pstream-Don-t-split-non-SHM-memblocks.patch
-%patch0 -p1
-# 0002-protocol-native-Re-enable-srbchannel.patch
-%patch1 -p1
-# 0003-pstream-Remove-unnecessary-if-condition.patch
-%patch2 -p1
-
 # 1001-core-make-dependencies-compile-for-64bit.patch
-%patch3 -p1
+%patch0 -p1
 # 1002-build-Install-pulsecore-headers.patch
-%patch4 -p1
+%patch1 -p1
 # 1003-daemon-Disable-automatic-shutdown-by-default.patch
-%patch5 -p1
+%patch2 -p1
 # 1004-daemon-Set-default-resampler-to-speex-fixed-2.patch
-%patch6 -p1
+%patch3 -p1
 # 1005-client-Disable-client-autospawn-by-default.patch
-%patch7 -p1
+%patch4 -p1
 # 1006-bluez4-device-Allow-leaving-transport-running-while-.patch
-%patch8 -p1
+%patch5 -p1
 # 1007-bluez4-device-Do-not-lose-transport-pointer-after-ge.patch
-%patch9 -p1
+%patch6 -p1
 # 1008-bluez4-device-Default-to-using-A2DP-profile-initiall.patch
-%patch10 -p1
+%patch7 -p1
 # 1009-bluez4-util-Detect-transport-acquire-release-loop.patch
-%patch11 -p1
+%patch8 -p1
 # 1010-bluez4-device-Fix-assert-when-source-doesn-t-exist-w.patch
-%patch12 -p1
+%patch9 -p1
 # 1011-bluez4-device-Don-t-acquire-transport-when-connectin.patch
-%patch13 -p1
+%patch10 -p1
 
 # 2001-module-rescue-streams-Add-parameters-to-define-defau.patch
-%patch14 -p1
-# 2002-daemon-Exit-with-0-on-SIGINT-or-SIGTERM.patch
-%patch15 -p1
-# 2003-dbus-Use-hooks-for-all-events.patch
-%patch16 -p1
+%patch11 -p1
 
 %build
 echo "%{pulseversion}" > .tarball-version
@@ -213,6 +196,9 @@ ln -s ../pulseaudio.service %{buildroot}/usr/lib/systemd/user/user-session.targe
 %doc %{_mandir}/man1/pactl.1.gz
 %doc %{_mandir}/man1/padsp.1.gz
 %doc %{_mandir}/man1/paplay.1.gz
+%doc %{_mandir}/man1/pamon.1.gz
+%doc %{_mandir}/man1/parec.1.gz
+%doc %{_mandir}/man1/parecord.1.gz
 %doc %{_mandir}/man1/pasuspender.1.gz
 %doc %{_mandir}/man1/pulseaudio.1.gz
 %doc %{_mandir}/man5/*.5.gz
@@ -224,7 +210,7 @@ ln -s ../pulseaudio.service %{buildroot}/usr/lib/systemd/user/user-session.targe
 %config(noreplace) %{_sysconfdir}/pulse/*.conf
 %config(noreplace) %{_sysconfdir}/pulse/*.pa
 %config(noreplace) %{_sysconfdir}/security/limits.d/90-pulse.conf
-%{_sysconfdir}/bash_completion.d/*
+%{_datadir}/bash-completion/completions/*
 %{_datadir}/zsh/site-functions/_pulseaudio
 %{_libdir}/systemd/user/pulseaudio.socket
 %dir %{_sysconfdir}/pulse
@@ -242,7 +228,6 @@ ln -s ../pulseaudio.service %{buildroot}/usr/lib/systemd/user/user-session.targe
 %{_bindir}/pasuspender
 %{_bindir}/pulseaudio
 %{_libdir}/*.so.*
-%{_libdir}/libpulsecore-%{pulseversion}.so
 %dir %{_libdir}/pulseaudio
 %dir %{_libdir}/pulse-%{pulseversion}/
 %dir %{_libdir}/pulse-%{pulseversion}/modules/
@@ -351,8 +336,13 @@ ln -s ../pulseaudio.service %{buildroot}/usr/lib/systemd/user/user-session.targe
 
 %files devel
 %defattr(-,root,root,-)
+%dir %{_includedir}/pulse
+%dir %{_includedir}/pulsecore
+%dir %{_includedir}/pulsecore/filter
 %{_includedir}/pulse/*.h
+%{_includedir}/pulsecore/filter/*.h
 %{_includedir}/pulsecore/*.h
+%dir %{_libdir}/cmake/PulseAudio
 %{_libdir}/cmake/PulseAudio/*.cmake
 %{_libdir}/libpulse-mainloop-glib.so
 %{_libdir}/libpulse-simple.so
