@@ -1,4 +1,4 @@
-From b08921dd1bbce3296aa0c2dffcd202e162957029 Mon Sep 17 00:00:00 2001
+From ed5b2ed3edc1efc274d483d4452ddd6829ca097c Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Thu, 10 Apr 2014 10:27:45 +0300
@@ -10,10 +10,10 @@ Subject: [PATCH 1007/1011] bluez4-device: Do not lose transport pointer after
  1 file changed, 2 insertions(+), 1 deletion(-)
 
 diff --git a/src/modules/bluetooth/module-bluez4-device.c b/src/modules/bluetooth/module-bluez4-device.c
-index 2959faa..30ffc3f 100644
+index 77704c7..591cc5d 100644
 --- a/src/modules/bluetooth/module-bluez4-device.c
 +++ b/src/modules/bluetooth/module-bluez4-device.c
-@@ -1982,7 +1982,8 @@ static void stop_thread(struct userdata *u) {
+@@ -1979,7 +1979,8 @@ static void stop_thread(struct userdata *u) {
  
      if (u->transport) {
          bt_transport_release(u);
@@ -24,5 +24,5 @@ index 2959faa..30ffc3f 100644
  
      if (u->sink) {
 -- 
-1.9.1
+2.1.4
 

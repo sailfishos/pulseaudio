@@ -1,4 +1,4 @@
-From 06e30a4a4df64bbcaae2fa816d295ce09043417f Mon Sep 17 00:00:00 2001
+From 508a2ebaf8ba5a90ff124d8c12b1b072af50aaeb Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Tue, 7 Apr 2015 13:27:02 +0300
@@ -27,10 +27,10 @@ would fail the verification.
  1 file changed, 48 insertions(+), 44 deletions(-)
 
 diff --git a/src/modules/bluetooth/module-bluez4-device.c b/src/modules/bluetooth/module-bluez4-device.c
-index 2c3c308..8ca16b9 100644
+index 8004abb..d7234c0 100644
 --- a/src/modules/bluetooth/module-bluez4-device.c
 +++ b/src/modules/bluetooth/module-bluez4-device.c
-@@ -208,6 +208,9 @@ enum {
+@@ -205,6 +205,9 @@ enum {
  #define BLUETOOTH_PREFER_HSP "bluetooth.prefer.hsp"
  
  static int init_profile(struct userdata *u);
@@ -40,7 +40,7 @@ index 2c3c308..8ca16b9 100644
  
  /* from IO thread */
  static void a2dp_set_bitpool(struct userdata *u, uint8_t bitpool) {
-@@ -360,13 +363,10 @@ static void bt_transport_release(struct userdata *u) {
+@@ -357,13 +360,10 @@ static void bt_transport_release(struct userdata *u) {
      teardown_stream(u);
  }
  
@@ -56,7 +56,7 @@ index 2c3c308..8ca16b9 100644
  
      u->stream_fd = pa_bluez4_transport_acquire(u->transport, optional, &u->read_link_mtu, &u->write_link_mtu);
      if (u->stream_fd < 0) {
-@@ -1394,8 +1394,11 @@ static void sink_set_volume_cb(pa_sink *s) {
+@@ -1391,8 +1391,11 @@ static void sink_set_volume_cb(pa_sink *s) {
      k = pa_sprintf_malloc("bluetooth-device@%p", (void*) s);
      u = pa_shared_get(s->core, k);
      pa_xfree(k);
@@ -69,7 +69,7 @@ index 2c3c308..8ca16b9 100644
      pa_assert(u->sink == s);
      pa_assert(u->profile == PA_BLUEZ4_PROFILE_HSP);
      pa_assert(u->transport);
-@@ -1421,8 +1424,11 @@ static void source_set_volume_cb(pa_source *s) {
+@@ -1418,8 +1421,11 @@ static void source_set_volume_cb(pa_source *s) {
      k = pa_sprintf_malloc("bluetooth-device@%p", (void*) s);
      u = pa_shared_get(s->core, k);
      pa_xfree(k);
@@ -82,7 +82,7 @@ index 2c3c308..8ca16b9 100644
      pa_assert(u->source == s);
      pa_assert(u->profile == PA_BLUEZ4_PROFILE_HSP);
      pa_assert(u->transport);
-@@ -1467,11 +1473,12 @@ static char *get_name(const char *type, pa_modargs *ma, const char *device_id, c
+@@ -1464,11 +1470,12 @@ static char *get_name(const char *type, pa_modargs *ma, const char *device_id, c
          return pa_sprintf_malloc("bluez_%s.%s", type, n);
  }
  
@@ -97,7 +97,7 @@ index 2c3c308..8ca16b9 100644
          PA_SOURCE_IS_OPENED(pa_source_get_state(u->hsp.sco_source))) {
  
          if (u->stream_fd >= 0)
-@@ -1515,7 +1522,8 @@ static pa_hook_result_t sink_state_changed_cb(pa_core *c, pa_sink *s, struct use
+@@ -1512,7 +1519,8 @@ static pa_hook_result_t sink_state_changed_cb(pa_core *c, pa_sink *s, struct use
      if (!USE_SCO_OVER_PCM(u) || s != u->hsp.sco_sink)
          return PA_HOOK_OK;
  
@@ -107,7 +107,7 @@ index 2c3c308..8ca16b9 100644
  
      return PA_HOOK_OK;
  }
-@@ -1528,7 +1536,8 @@ static pa_hook_result_t source_state_changed_cb(pa_core *c, pa_source *s, struct
+@@ -1525,7 +1533,8 @@ static pa_hook_result_t source_state_changed_cb(pa_core *c, pa_source *s, struct
      if (!USE_SCO_OVER_PCM(u) || s != u->hsp.sco_source)
          return PA_HOOK_OK;
  
@@ -117,7 +117,7 @@ index 2c3c308..8ca16b9 100644
  
      return PA_HOOK_OK;
  }
-@@ -1646,6 +1655,7 @@ static int add_sink(struct userdata *u) {
+@@ -1643,6 +1652,7 @@ static int add_sink(struct userdata *u) {
          data.card = u->card;
          data.name = get_name("sink", u->modargs, u->address, pa_bluez4_profile_to_string(u->profile), &b);
          data.namereg_fail = b;
@@ -125,7 +125,7 @@ index 2c3c308..8ca16b9 100644
  
          if (pa_modargs_get_proplist(u->modargs, "sink_properties", data.proplist, PA_UPDATE_REPLACE) < 0) {
              pa_log("Invalid properties");
-@@ -1654,19 +1664,8 @@ static int add_sink(struct userdata *u) {
+@@ -1651,19 +1661,8 @@ static int add_sink(struct userdata *u) {
          }
          connect_ports(u, &data, PA_DIRECTION_OUTPUT);
  
@@ -147,7 +147,7 @@ index 2c3c308..8ca16b9 100644
  
          u->sink = pa_sink_new(u->core, &data, PA_SINK_HARDWARE|PA_SINK_LATENCY);
          pa_sink_new_data_done(&data);
-@@ -1717,6 +1716,7 @@ static int add_source(struct userdata *u) {
+@@ -1714,6 +1713,7 @@ static int add_source(struct userdata *u) {
          data.card = u->card;
          data.name = get_name("source", u->modargs, u->address, pa_bluez4_profile_to_string(u->profile), &b);
          data.namereg_fail = b;
@@ -155,7 +155,7 @@ index 2c3c308..8ca16b9 100644
  
          if (pa_modargs_get_proplist(u->modargs, "source_properties", data.proplist, PA_UPDATE_REPLACE) < 0) {
              pa_log("Invalid properties");
-@@ -1726,19 +1726,8 @@ static int add_source(struct userdata *u) {
+@@ -1723,19 +1723,8 @@ static int add_source(struct userdata *u) {
  
          connect_ports(u, &data, PA_DIRECTION_INPUT);
  
@@ -177,7 +177,7 @@ index 2c3c308..8ca16b9 100644
  
          u->source = pa_source_new(u->core, &data, PA_SOURCE_HARDWARE|PA_SOURCE_LATENCY);
          pa_source_new_data_done(&data);
-@@ -1905,7 +1894,7 @@ static pa_hook_result_t transport_state_changed_cb(pa_bluez4_discovery *y, pa_bl
+@@ -1902,7 +1891,7 @@ static pa_hook_result_t transport_state_changed_cb(pa_bluez4_discovery *y, pa_bl
  }
  
  /* Run from main thread */
@@ -186,7 +186,7 @@ index 2c3c308..8ca16b9 100644
      pa_bluez4_transport *t;
  
      pa_assert(u);
-@@ -1921,13 +1910,22 @@ static int setup_transport(struct userdata *u) {
+@@ -1918,13 +1907,22 @@ static int setup_transport(struct userdata *u) {
  
      u->transport = t;
  
@@ -213,7 +213,7 @@ index 2c3c308..8ca16b9 100644
      return 0;
  }
  
-@@ -1937,11 +1935,13 @@ static int init_profile(struct userdata *u) {
+@@ -1934,11 +1932,13 @@ static int init_profile(struct userdata *u) {
      pa_assert(u);
      pa_assert(u->profile != PA_BLUEZ4_PROFILE_OFF);
  
@@ -228,7 +228,7 @@ index 2c3c308..8ca16b9 100644
      if (u->profile == PA_BLUEZ4_PROFILE_A2DP ||
          u->profile == PA_BLUEZ4_PROFILE_HSP ||
          u->profile == PA_BLUEZ4_PROFILE_HFGW)
-@@ -1963,6 +1963,8 @@ static void stop_thread(struct userdata *u) {
+@@ -1960,6 +1960,8 @@ static void stop_thread(struct userdata *u) {
  
      pa_assert(u);
  
@@ -237,7 +237,7 @@ index 2c3c308..8ca16b9 100644
      if (u->sink && !USE_SCO_OVER_PCM(u))
          pa_sink_unlink(u->sink);
  
-@@ -2032,7 +2034,8 @@ static int start_thread(struct userdata *u) {
+@@ -2029,7 +2031,8 @@ static int start_thread(struct userdata *u) {
      pa_thread_mq_init(&u->thread_mq, u->core->mainloop, u->rtpoll);
  
      if (USE_SCO_OVER_PCM(u)) {
@@ -247,7 +247,7 @@ index 2c3c308..8ca16b9 100644
              char *k;
  
              if (u->sink) {
-@@ -2047,6 +2050,7 @@ static int start_thread(struct userdata *u) {
+@@ -2044,6 +2047,7 @@ static int start_thread(struct userdata *u) {
                  pa_xfree(k);
                  u->source = NULL;
              }
@@ -256,5 +256,5 @@ index 2c3c308..8ca16b9 100644
          }
  
 -- 
-1.9.1
+2.1.4
 
