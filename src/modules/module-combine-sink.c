@@ -52,6 +52,8 @@
 #endif
 
 #include <pulsecore/strlist.h>
+#include <pulsecore/hashmap.h>
+#include <pulsecore/idxset.h>
 
 PA_MODULE_AUTHOR("Lennart Poettering");
 PA_MODULE_DESCRIPTION("Combine multiple sinks to one");
@@ -61,6 +63,7 @@ PA_MODULE_USAGE(
         "sink_name=<name for the sink> "
         "sink_properties=<properties for the sink> "
         "slaves=<slave sinks> "
+        "ignore=<slave sinks to ignore in automatic mode> "
         "adjust_time=<how often to readjust rates in s> "
         "resample_method=<method> "
         "format=<sample format> "
@@ -81,6 +84,7 @@ static const char* const valid_modargs[] = {
     "sink_name",
     "sink_properties",
     "slaves",
+    "ignore",
     "adjust_time",
     "resample_method",
     "format",
@@ -156,6 +160,8 @@ struct userdata {
 
     bool automatic;
     bool auto_desc;
+
+    pa_hashmap *ignore_sinks;
 
     pa_strlist *unlinked_slaves;
 
@@ -1366,6 +1372,9 @@ static bool is_suitable_sink(struct userdata *u, pa_sink *s) {
         if (!pa_streq(t, "sound"))
             return false;
 
+    if (u->ignore_sinks && pa_hashmap_get(u->ignore_sinks, s->name))
+        return false;
+
     return true;
 }
 
@@ -1465,7 +1474,7 @@ static pa_hook_result_t sink_state_changed_hook_cb(pa_core *c, pa_sink *s, struc
 int pa__init(pa_module*m) {
     struct userdata *u;
     pa_modargs *ma = NULL;
-    const char *slaves, *rm;
+    const char *slaves, *rm, *ignore;
     int resample_method;
     pa_sample_spec ss;
     pa_channel_map map;
@@ -1532,6 +1541,28 @@ int pa__init(pa_module*m) {
 
     slaves = pa_modargs_get_value(ma, "slaves", NULL);
     u->automatic = !slaves;
+
+    if ((ignore = pa_modargs_get_value(ma, "ignore", NULL))) {
+        const char* split_state = NULL;
+        char *n = NULL;
+
+        if (!u->automatic) {
+            pa_log("ignore is not valid argument when not in automatic mode");
+            goto fail;
+        }
+
+        u->ignore_sinks = pa_hashmap_new_full(pa_idxset_string_hash_func,
+                                              pa_idxset_string_compare_func,
+                                              pa_xfree,
+                                              NULL);
+
+        while ((n = pa_split(ignore, ",", &split_state))) {
+            if (!pa_hashmap_get(u->ignore_sinks, n))
+                pa_hashmap_put(u->ignore_sinks, n, PA_UINT_TO_PTR(1));
+            else
+                pa_xfree(n);
+        }
+    }
 
     ss = m->core->default_sample_spec;
     map = m->core->default_channel_map;
@@ -1737,6 +1768,9 @@ void pa__done(pa_module*m) {
         pa_sink_suspend(u->sink, true, PA_SUSPEND_UNAVAILABLE);
 
     pa_strlist_free(u->unlinked_slaves);
+
+    if (u->ignore_sinks)
+        pa_hashmap_free(u->ignore_sinks);
 
     if (u->sink_put_slot)
         pa_hook_slot_free(u->sink_put_slot);
