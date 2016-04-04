@@ -238,6 +238,13 @@ static void teardown(struct userdata *u) {
     pa_assert(u);
     pa_assert_ctl_context();
 
+    /* Set message handler to default handler. In case there was sink_input
+     * move just before the module was unloaded there would be one update to
+     * max request right before unloading the module. This would result in a
+     * call to adjust_rates somewhere after the struct userdata has been
+     * freed causing a segfault. */
+    u->sink_input->parent.process_msg = pa_sink_input_process_msg;
+
     u->adjust_time = 0;
     enable_adjust_timer(u, false);
 
