@@ -2,7 +2,7 @@ From bcf86b2acbc088d24af5df7b627ebb1f377d9e0e Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@jolla.com>
 Date: Tue, 29 Mar 2016 13:13:59 +0300
-Subject: [PATCH 2002/2002] combine-sink: Add argument for ignoring sinks in
+Subject: [PATCH 2002/2003] combine-sink: Add argument for ignoring sinks in
  automatic mode.
 
 ---

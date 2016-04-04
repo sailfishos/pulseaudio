@@ -29,6 +29,7 @@ Patch10:    1011-bluez4-device-Don-t-acquire-transport-when-connectin.patch
 # Patches pending inclusion to upstream
 Patch11:    2001-module-rescue-streams-Add-parameters-to-define-defau.patch
 Patch12:    2002-combine-sink-Add-argument-for-ignoring-sinks-in-auto.patch
+Patch13:    2003-loopback-Prevent-crash-when-unloading-module-after-s.patch
 Requires:   udev
 Requires:   libsbc >= 1.0
 Requires(post): /sbin/ldconfig
@@ -131,6 +132,8 @@ Makes PulseAudio a drop-in replacement for ESound.
 %patch11 -p1
 # 2002-combine-sink-Add-argument-for-ignoring-sinks-in-auto.patch
 %patch12 -p1
+# 2003-loopback-Prevent-crash-when-unloading-module-after-s.patch
+%patch13 -p1
 
 %build
 echo "%{pulseversion}" > .tarball-version
