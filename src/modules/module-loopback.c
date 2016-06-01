@@ -55,7 +55,8 @@ PA_MODULE_USAGE(
         "source_output_properties=<proplist> "
         "source_dont_move=<boolean> "
         "sink_dont_move=<boolean> "
-        "remix=<remix channels?> ");
+        "remix=<remix channels?> "
+        "reset_on_attach=<reset memblockqs on sink-input attach?>");
 
 #define DEFAULT_LATENCY_MSEC 200
 
@@ -87,6 +88,8 @@ struct userdata {
     bool in_pop;
     size_t min_memblockq_length;
 
+    bool reset_on_attach;
+
     struct {
         int64_t send_counter;
         size_t source_output_buffer;
@@ -115,6 +118,7 @@ static const char* const valid_modargs[] = {
     "source_dont_move",
     "sink_dont_move",
     "remix",
+    "reset_on_attach",
     NULL,
 };
 
@@ -127,6 +131,7 @@ enum {
 
 enum {
     SOURCE_OUTPUT_MESSAGE_LATENCY_SNAPSHOT = PA_SOURCE_OUTPUT_MESSAGE_MAX,
+    SOURCE_OUTPUT_MESSAGE_CLEAR_DELAY_MEMBLOCKQ
 };
 
 static void enable_adjust_timer(struct userdata *u, bool enable);
@@ -319,6 +324,16 @@ static int source_output_process_msg_cb(pa_msgobject *obj, int code, void *data,
 
             return 0;
         }
+
+        case SOURCE_OUTPUT_MESSAGE_CLEAR_DELAY_MEMBLOCKQ: {
+            size_t length;
+
+            pa_log_debug("Drop everything from delay_memblockq");
+            length = pa_memblockq_get_length(u->source_output->thread_info.delay_memblockq);
+            pa_memblockq_drop(u->source_output->thread_info.delay_memblockq, length);
+
+            return 0;
+        }
     }
 
     return pa_source_output_process_msg(obj, code, data, offset, chunk);
@@ -491,6 +506,16 @@ static void sink_input_process_rewind_cb(pa_sink_input *i, size_t nbytes) {
     pa_memblockq_rewind(u->memblockq, nbytes);
 }
 
+static void reset_on_attach(struct userdata *u, const char *log) {
+    pa_assert(u);
+
+    if (u->reset_on_attach) {
+        pa_log_info("Reset memblockqs on %s.", log);
+        pa_asyncmsgq_send(u->source_output->source->asyncmsgq, PA_MSGOBJECT(u->source_output), SOURCE_OUTPUT_MESSAGE_CLEAR_DELAY_MEMBLOCKQ, NULL, 0, NULL);
+        pa_memblockq_drop(u->memblockq, pa_memblockq_get_length(u->memblockq));
+    }
+}
+
 /* Called from output thread context */
 static int sink_input_process_msg_cb(pa_msgobject *obj, int code, void *data, int64_t offset, pa_memchunk *chunk) {
     struct userdata *u = PA_SINK_INPUT(obj)->userdata;
@@ -603,6 +628,7 @@ static void sink_input_attach_cb(pa_sink_input *i) {
 
     pa_memblockq_set_prebuf(u->memblockq, pa_sink_input_get_max_request(i)*2);
     pa_memblockq_set_maxrewind(u->memblockq, pa_sink_input_get_max_rewind(i));
+    reset_on_attach(u, "attach");
 
     u->min_memblockq_length = (size_t) -1;
 }
@@ -744,6 +770,7 @@ int pa__init(pa_module *m) {
     uint32_t adjust_time_sec;
     const char *n;
     bool remix = true;
+    bool reset_on_attach = false;
 
     pa_assert(m);
 
@@ -766,6 +793,11 @@ int pa__init(pa_module *m) {
 
     if (pa_modargs_get_value_boolean(ma, "remix", &remix) < 0) {
         pa_log("Invalid boolean remix parameter");
+        goto fail;
+    }
+
+    if (pa_modargs_get_value_boolean(ma, "reset_on_attach", &reset_on_attach) < 0) {
+        pa_log("Invalid boolean reset_on_attach parameter");
         goto fail;
     }
 
@@ -823,6 +855,7 @@ int pa__init(pa_module *m) {
     u->core = m->core;
     u->module = m;
     u->latency = (pa_usec_t) latency_msec * PA_USEC_PER_MSEC;
+    u->reset_on_attach = reset_on_attach;
 
     adjust_time_sec = DEFAULT_ADJUST_TIME_USEC / PA_USEC_PER_SEC;
     if (pa_modargs_get_value_u32(ma, "adjust_time", &adjust_time_sec) < 0) {
