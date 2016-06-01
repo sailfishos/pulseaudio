@@ -1631,6 +1631,11 @@ static int add_sink(struct userdata *u) {
 
     pa_assert(u->transport);
 
+    if (u->sink) {
+        pa_log_debug("add_sink() %s sink already added.", u->sink == u->hsp.sco_sink ? "SCO" : "A2DP");
+        return 0;
+    }
+
     if (USE_SCO_OVER_PCM(u)) {
         pa_proplist *p;
 
@@ -1706,6 +1711,11 @@ static int add_source(struct userdata *u) {
     char *k;
 
     pa_assert(u->transport);
+
+    if (u->source) {
+        pa_log_debug("add_source() %s source already added.", u->source == u->hsp.sco_source ? "SCO" : "A2DP");
+        return 0;
+    }
 
     if (USE_SCO_OVER_PCM(u)) {
         u->source = u->hsp.sco_source;
