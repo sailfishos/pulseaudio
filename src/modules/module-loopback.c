@@ -129,7 +129,10 @@ enum {
     SINK_INPUT_MESSAGE_POST = PA_SINK_INPUT_MESSAGE_MAX,
     SINK_INPUT_MESSAGE_REWIND,
     SINK_INPUT_MESSAGE_LATENCY_SNAPSHOT,
-    SINK_INPUT_MESSAGE_MAX_REQUEST_CHANGED
+    /* Messages below are sent from the IO thread to the main
+     * thread. */
+    SINK_INPUT_MESSAGE_MAX_REQUEST_CHANGED,
+    SINK_INPUT_MESSAGE_RESET_RATE
 };
 
 enum {
@@ -494,6 +497,14 @@ static int sink_input_pop_cb(pa_sink_input *i, size_t nbytes, pa_memchunk *chunk
 
     if (pa_memblockq_peek(u->memblockq, chunk) < 0) {
         pa_log_info("Could not peek into queue");
+        if (u->source_output &&
+            i->sample_spec.rate > u->source_output->sample_spec.rate) {
+            /* We are probably skipping audio here already, so no extra ill
+             * effect of doing more than 2% sample rate change at the same
+             * time. */
+            pa_log_info("Reset sink-input rate to source-output rate.");
+            pa_asyncmsgq_post(pa_thread_mq_get()->outq, PA_MSGOBJECT(u->sink_input), SINK_INPUT_MESSAGE_RESET_RATE, PA_UINT_TO_PTR(u->source_output->sample_spec.rate), 0, NULL, NULL);
+        }
         return -1;
     }
 
@@ -619,13 +630,23 @@ static int sink_input_process_msg_cb(pa_msgobject *obj, int code, void *data, in
 
         case SINK_INPUT_MESSAGE_MAX_REQUEST_CHANGED: {
             /* This message is sent from the IO thread to the main
-             * thread! So don't be confused. All the user cases above
-             * are executed in thread context, but this one is not! */
+             * thread! So don't be confused. */
 
             pa_assert_ctl_context();
 
             if (u->time_event)
                 adjust_rates(u);
+            return 0;
+        }
+
+        case SINK_INPUT_MESSAGE_RESET_RATE: {
+            /* This message is sent from the IO thread to the main
+             * thread! So don't be confused. */
+
+            pa_assert_ctl_context();
+
+            pa_sink_input_set_rate(u->sink_input, PA_PTR_TO_UINT(data));
+
             return 0;
         }
     }
