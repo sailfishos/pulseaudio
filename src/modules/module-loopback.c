@@ -64,6 +64,8 @@ PA_MODULE_USAGE(
 
 #define DEFAULT_ADJUST_TIME_USEC (10*PA_USEC_PER_SEC)
 
+#define TRIGGER_RESET_VOLUME_THRESHOLD (1000)
+
 struct userdata {
     pa_core *core;
     pa_module *module;
@@ -89,6 +91,7 @@ struct userdata {
     size_t min_memblockq_length;
 
     bool reset_on_attach;
+    bool trigger_reset;
 
     struct {
         int64_t send_counter;
@@ -521,6 +524,16 @@ static int sink_input_process_msg_cb(pa_msgobject *obj, int code, void *data, in
     struct userdata *u = PA_SINK_INPUT(obj)->userdata;
 
     switch (code) {
+
+        case PA_SINK_INPUT_MESSAGE_SET_SOFT_VOLUME: {
+            if (pa_cvolume_avg(&u->sink_input->soft_volume) < TRIGGER_RESET_VOLUME_THRESHOLD)
+                u->trigger_reset = true;
+            else if (u->trigger_reset) {
+                reset_on_attach(u, "restoring volume");
+                u->trigger_reset = false;
+            }
+            break;
+        }
 
         case PA_SINK_INPUT_MESSAGE_GET_LATENCY: {
             pa_usec_t *r = data;
