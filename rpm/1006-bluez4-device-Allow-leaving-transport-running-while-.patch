@@ -2,7 +2,7 @@ From 7738c4d2653a1bfc7f04c03cadec45a87f51a367 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Thu, 10 Apr 2014 10:26:42 +0300
-Subject: [PATCH 1006/1011] bluez4-device: Allow leaving transport running
+Subject: [PATCH 1006/1014] bluez4-device: Allow leaving transport running
  while sink and source are suspended.
 
 There are some cases where keeping the SCO transport running even when

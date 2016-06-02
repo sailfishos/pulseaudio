@@ -14,22 +14,30 @@ URL:        http://pulseaudio.org
 Source0:    http://freedesktop.org/software/pulseaudio/releases/pulseaudio-%{version}.tar.xz
 Source1:    90-pulse.conf
 Source2:    pulseaudio.service
+# Patches backported from upstream
+Patch0:     0001-pulsecore-Don-t-allow-unreferencing-linked-object.patch
+Patch1:     0002-dbus-fix-crash-on-LoadModule.patch
+Patch2:     0003-dbus-Deal-with-double-counting-module-dbus-protocol.patch
 # Patches specific to Mer version
-Patch0:     1001-core-make-dependencies-compile-for-64bit.patch
-Patch1:     1002-build-Install-pulsecore-headers.patch
-Patch2:     1003-daemon-Disable-automatic-shutdown-by-default.patch
-Patch3:     1004-daemon-Set-default-resampler-to-speex-fixed-2.patch
-Patch4:     1005-client-Disable-client-autospawn-by-default.patch
-Patch5:     1006-bluez4-device-Allow-leaving-transport-running-while-.patch
-Patch6:     1007-bluez4-device-Do-not-lose-transport-pointer-after-ge.patch
-Patch7:     1008-bluez4-device-Default-to-using-A2DP-profile-initiall.patch
-Patch8:     1009-bluez4-util-Detect-transport-acquire-release-loop.patch
-Patch9:     1010-bluez4-device-Fix-assert-when-source-doesn-t-exist-w.patch
-Patch10:    1011-bluez4-device-Don-t-acquire-transport-when-connectin.patch
+Patch3:     1001-core-make-dependencies-compile-for-64bit.patch
+Patch4:     1002-build-Install-pulsecore-headers.patch
+Patch5:     1003-daemon-Disable-automatic-shutdown-by-default.patch
+Patch6:     1004-daemon-Set-default-resampler-to-speex-fixed-2.patch
+Patch7:     1005-client-Disable-client-autospawn-by-default.patch
+Patch8:     1006-bluez4-device-Allow-leaving-transport-running-while-.patch
+Patch9:     1007-bluez4-device-Do-not-lose-transport-pointer-after-ge.patch
+Patch10:    1008-bluez4-device-Default-to-using-A2DP-profile-initiall.patch
+Patch11:    1009-bluez4-util-Detect-transport-acquire-release-loop.patch
+Patch12:    1010-bluez4-device-Fix-assert-when-source-doesn-t-exist-w.patch
+Patch13:    1011-bluez4-device-Don-t-acquire-transport-when-connectin.patch
+Patch14:    1012-bluez4-device-Don-t-re-add-sink-or-source.patch
+Patch15:    1013-loopback-Add-option-to-reset-queues-on-attach.patch
+Patch16:    1014-loopback-reset-queues-after-volume-was-muted.patch
 # Patches pending inclusion to upstream
-Patch11:    2001-module-rescue-streams-Add-parameters-to-define-defau.patch
-Patch12:    2002-combine-sink-Add-argument-for-ignoring-sinks-in-auto.patch
-Patch13:    2003-loopback-Prevent-crash-when-unloading-module-after-s.patch
+Patch17:    2001-module-rescue-streams-Add-parameters-to-define-defau.patch
+Patch18:    2002-combine-sink-Add-argument-for-ignoring-sinks-in-auto.patch
+Patch19:    2003-loopback-Prevent-crash-when-unloading-module-after-s.patch
+Patch20:    2004-loopback-Reset-sink-input-rate-when-queue-is-empty.patch
 Requires:   udev
 Requires:   libsbc >= 1.0
 Requires(post): /sbin/ldconfig
@@ -105,35 +113,30 @@ Makes PulseAudio a drop-in replacement for ESound.
 %prep
 %setup -q -n %{name}-%{version}/pulseaudio
 
-# 1001-core-make-dependencies-compile-for-64bit.patch
+# Patches backported from upstream
 %patch0 -p1
-# 1002-build-Install-pulsecore-headers.patch
 %patch1 -p1
-# 1003-daemon-Disable-automatic-shutdown-by-default.patch
 %patch2 -p1
-# 1004-daemon-Set-default-resampler-to-speex-fixed-2.patch
+# Patches specific to Mer version
 %patch3 -p1
-# 1005-client-Disable-client-autospawn-by-default.patch
 %patch4 -p1
-# 1006-bluez4-device-Allow-leaving-transport-running-while-.patch
 %patch5 -p1
-# 1007-bluez4-device-Do-not-lose-transport-pointer-after-ge.patch
 %patch6 -p1
-# 1008-bluez4-device-Default-to-using-A2DP-profile-initiall.patch
 %patch7 -p1
-# 1009-bluez4-util-Detect-transport-acquire-release-loop.patch
 %patch8 -p1
-# 1010-bluez4-device-Fix-assert-when-source-doesn-t-exist-w.patch
 %patch9 -p1
-# 1011-bluez4-device-Don-t-acquire-transport-when-connectin.patch
 %patch10 -p1
-
-# 2001-module-rescue-streams-Add-parameters-to-define-defau.patch
 %patch11 -p1
-# 2002-combine-sink-Add-argument-for-ignoring-sinks-in-auto.patch
 %patch12 -p1
-# 2003-loopback-Prevent-crash-when-unloading-module-after-s.patch
 %patch13 -p1
+%patch14 -p1
+%patch15 -p1
+%patch16 -p1
+# Patches pending inclusion to upstream
+%patch17 -p1
+%patch18 -p1
+%patch19 -p1
+%patch20 -p1
 
 %build
 echo "%{pulseversion}" > .tarball-version

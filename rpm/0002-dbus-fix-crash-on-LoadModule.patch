@@ -1,0 +1,75 @@
+From 8250a32ef0a436fd4c6c8d51e1e6c0fd4976b8b0 Mon Sep 17 00:00:00 2001
+From: Tanu Kaskinen <tanuk@iki.fi>
+Date: Sat, 28 May 2016 18:54:04 +0300
+Subject: [PATCH 2/3] dbus: fix crash on LoadModule()
+
+Commit ae415b07a07c9fe70714d01c91980edb25d966de ("dbus: Use hooks for
+module new and removed events") changed the new module monitoring from
+the asynchronous subscription system. Previously handle_load_module()
+created the new pa_dbusiface_module object before we got
+a notification of the loading of the module, but now we get the
+notification already within the pa_module_load() call. That resulted
+in a crash, because the module_new_cb() created the
+pa_dbusiface_module object before pa_module_load() returned, and then
+handle_load_module() would create another pa_dbusiface_module object
+for the same module.
+
+This patch removes the pa_dbusiface_module_new() call from
+handle_load_module(). module_new_cb() is now responsible for all
+pa_dbusiface_module object creations, except the ones that are created
+during the initialization of module-dbus-protocol.
+
+Signed-off-by: Arun Raghavan <arun@arunraghavan.net>
+---
+ src/modules/dbus/iface-core.c | 25 +++++++++++--------------
+ 1 file changed, 11 insertions(+), 14 deletions(-)
+
+diff --git a/src/modules/dbus/iface-core.c b/src/modules/dbus/iface-core.c
+index 88e9030..3d2c8ee 100644
+--- a/src/modules/dbus/iface-core.c
++++ b/src/modules/dbus/iface-core.c
+@@ -1511,9 +1511,8 @@ static void handle_load_module(DBusConnection *conn, DBusMessage *msg, void *use
+         goto finish;
+     }
+ 
+-    dbus_module = pa_dbusiface_module_new(module);
+-    pa_hashmap_put(c->modules, PA_UINT32_TO_PTR(module->index), dbus_module);
+-
++    /* This is created during module loading in module_new_cb() */
++    dbus_module = pa_hashmap_get(c->modules, PA_UINT32_TO_PTR(module->index));
+     object_path = pa_dbusiface_module_get_path(dbus_module);
+ 
+     pa_dbus_send_basic_value_reply(conn, msg, DBUS_TYPE_OBJECT_PATH, &object_path);
+@@ -1589,20 +1588,18 @@ static pa_hook_result_t module_new_cb(void *hook_data, void *call_data, void *sl
+     pa_assert(c);
+     pa_assert(module);
+ 
+-    if (!(module_iface = pa_hashmap_get(c->modules, PA_UINT32_TO_PTR(module->index)))) {
+-        module_iface = pa_dbusiface_module_new(module);
+-        pa_assert_se(pa_hashmap_put(c->modules, PA_UINT32_TO_PTR(module->index), module_iface) >= 0);
++    module_iface = pa_dbusiface_module_new(module);
++    pa_assert_se(pa_hashmap_put(c->modules, PA_UINT32_TO_PTR(module->index), module_iface) >= 0);
+ 
+-        object_path = pa_dbusiface_module_get_path(module_iface);
++    object_path = pa_dbusiface_module_get_path(module_iface);
+ 
+-        pa_assert_se((signal_msg = dbus_message_new_signal(PA_DBUS_CORE_OBJECT_PATH,
+-                                                           PA_DBUS_CORE_INTERFACE,
+-                                                           signals[SIGNAL_NEW_MODULE].name)));
+-        pa_assert_se(dbus_message_append_args(signal_msg, DBUS_TYPE_OBJECT_PATH, &object_path, DBUS_TYPE_INVALID));
++    pa_assert_se((signal_msg = dbus_message_new_signal(PA_DBUS_CORE_OBJECT_PATH,
++                                                       PA_DBUS_CORE_INTERFACE,
++                                                       signals[SIGNAL_NEW_MODULE].name)));
++    pa_assert_se(dbus_message_append_args(signal_msg, DBUS_TYPE_OBJECT_PATH, &object_path, DBUS_TYPE_INVALID));
+ 
+-        pa_dbus_protocol_send_signal(c->dbus_protocol, signal_msg);
+-        dbus_message_unref(signal_msg);
+-    }
++    pa_dbus_protocol_send_signal(c->dbus_protocol, signal_msg);
++    dbus_message_unref(signal_msg);
+ 
+     return PA_HOOK_OK;
+ }
+-- 
+2.1.4
+

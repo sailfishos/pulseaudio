@@ -1,0 +1,123 @@
+From fe829a39cc38ba40f90dd1e169932aed986cd73d Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?= <jusa@hilvi.org>
+Date: Fri, 13 May 2016 17:39:41 +0300
+Subject: [PATCH 1/3] pulsecore: Don't allow unreferencing linked object.
+
+Sink(-input) and source(-output) called unlink function when reference
+count dropped to zero. This would result in unlink hooks being called
+with an object having a reference count of zero, and this is not a
+situation we want modules to have to deal with. It is better to just
+remove the redundant unlinking code from sink(-input) and
+source(-output) and assert on reference count in unlink functions as well.
+
+It is expected that in well behaving code the owner of an object will
+always unlink the object before unreferencing.
+
+Signed-off-by: Arun Raghavan <arun@arunraghavan.net>
+---
+ src/pulsecore/sink-input.c    | 6 ++----
+ src/pulsecore/sink.c          | 6 ++----
+ src/pulsecore/source-output.c | 7 +++----
+ src/pulsecore/source.c        | 6 ++----
+ 4 files changed, 9 insertions(+), 16 deletions(-)
+
+diff --git a/src/pulsecore/sink-input.c b/src/pulsecore/sink-input.c
+index 8ec63b5..5a2e9b2 100644
+--- a/src/pulsecore/sink-input.c
++++ b/src/pulsecore/sink-input.c
+@@ -645,7 +645,7 @@ void pa_sink_input_unlink(pa_sink_input *i) {
+     bool linked;
+     pa_source_output *o, PA_UNUSED *p = NULL;
+ 
+-    pa_assert(i);
++    pa_sink_input_assert_ref(i);
+     pa_assert_ctl_context();
+ 
+     /* See pa_sink_unlink() for a couple of comments how this function
+@@ -721,9 +721,7 @@ static void sink_input_free(pa_object *o) {
+     pa_assert(i);
+     pa_assert_ctl_context();
+     pa_assert(pa_sink_input_refcnt(i) == 0);
+-
+-    if (PA_SINK_INPUT_IS_LINKED(i->state))
+-        pa_sink_input_unlink(i);
++    pa_assert(!PA_SINK_INPUT_IS_LINKED(i->state));
+ 
+     pa_log_info("Freeing input %u \"%s\"", i->index,
+                 i->proplist ? pa_strnull(pa_proplist_gets(i->proplist, PA_PROP_MEDIA_NAME)) : "");
+diff --git a/src/pulsecore/sink.c b/src/pulsecore/sink.c
+index 0b44fc7..7deab18 100644
+--- a/src/pulsecore/sink.c
++++ b/src/pulsecore/sink.c
+@@ -669,7 +669,7 @@ void pa_sink_unlink(pa_sink* s) {
+     bool linked;
+     pa_sink_input *i, PA_UNUSED *j = NULL;
+ 
+-    pa_assert(s);
++    pa_sink_assert_ref(s);
+     pa_assert_ctl_context();
+ 
+     /* Please note that pa_sink_unlink() does more than simply
+@@ -721,9 +721,7 @@ static void sink_free(pa_object *o) {
+     pa_assert(s);
+     pa_assert_ctl_context();
+     pa_assert(pa_sink_refcnt(s) == 0);
+-
+-    if (PA_SINK_IS_LINKED(s->state))
+-        pa_sink_unlink(s);
++    pa_assert(!PA_SINK_IS_LINKED(s->state));
+ 
+     pa_log_info("Freeing sink %u \"%s\"", s->index, s->name);
+ 
+diff --git a/src/pulsecore/source-output.c b/src/pulsecore/source-output.c
+index c73c548..ba2140b 100644
+--- a/src/pulsecore/source-output.c
++++ b/src/pulsecore/source-output.c
+@@ -548,7 +548,8 @@ static void source_output_set_state(pa_source_output *o, pa_source_output_state_
+ /* Called from main context */
+ void pa_source_output_unlink(pa_source_output*o) {
+     bool linked;
+-    pa_assert(o);
++
++    pa_source_output_assert_ref(o);
+     pa_assert_ctl_context();
+ 
+     /* See pa_sink_unlink() for a couple of comments how this function
+@@ -614,9 +615,7 @@ static void source_output_free(pa_object* mo) {
+     pa_assert(o);
+     pa_assert_ctl_context();
+     pa_assert(pa_source_output_refcnt(o) == 0);
+-
+-    if (PA_SOURCE_OUTPUT_IS_LINKED(o->state))
+-        pa_source_output_unlink(o);
++    pa_assert(!PA_SOURCE_OUTPUT_IS_LINKED(o->state));
+ 
+     pa_log_info("Freeing output %u \"%s\"", o->index,
+                 o->proplist ? pa_strnull(pa_proplist_gets(o->proplist, PA_PROP_MEDIA_NAME)) : "");
+diff --git a/src/pulsecore/source.c b/src/pulsecore/source.c
+index f4b96ab..92f7b26 100644
+--- a/src/pulsecore/source.c
++++ b/src/pulsecore/source.c
+@@ -612,7 +612,7 @@ void pa_source_unlink(pa_source *s) {
+     bool linked;
+     pa_source_output *o, PA_UNUSED *j = NULL;
+ 
+-    pa_assert(s);
++    pa_source_assert_ref(s);
+     pa_assert_ctl_context();
+ 
+     /* See pa_sink_unlink() for a couple of comments how this function
+@@ -656,9 +656,7 @@ static void source_free(pa_object *o) {
+     pa_assert(s);
+     pa_assert_ctl_context();
+     pa_assert(pa_source_refcnt(s) == 0);
+-
+-    if (PA_SOURCE_IS_LINKED(s->state))
+-        pa_source_unlink(s);
++    pa_assert(!PA_SOURCE_IS_LINKED(s->state));
+ 
+     pa_log_info("Freeing source %u \"%s\"", s->index, s->name);
+ 
+-- 
+2.1.4
+
