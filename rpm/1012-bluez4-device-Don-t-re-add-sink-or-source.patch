@@ -1,0 +1,41 @@
+From 5326df1bc262cd6c73f07d20bc2c705850a06f53 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
+ <juho.hamalainen@jolla.com>
+Date: Wed, 1 Jun 2016 14:39:08 +0300
+Subject: [PATCH 1012/1014] bluez4-device: Don't re-add sink or source.
+
+---
+ src/modules/bluetooth/module-bluez4-device.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/src/modules/bluetooth/module-bluez4-device.c b/src/modules/bluetooth/module-bluez4-device.c
+index d7234c0..8372e0f 100644
+--- a/src/modules/bluetooth/module-bluez4-device.c
++++ b/src/modules/bluetooth/module-bluez4-device.c
+@@ -1630,6 +1630,11 @@ static int add_sink(struct userdata *u) {
+ 
+     pa_assert(u->transport);
+ 
++    if (u->sink) {
++        pa_log_debug("add_sink() %s sink already added.", u->sink == u->hsp.sco_sink ? "SCO" : "A2DP");
++        return 0;
++    }
++
+     if (USE_SCO_OVER_PCM(u)) {
+         pa_proplist *p;
+ 
+@@ -1695,6 +1700,11 @@ static int add_source(struct userdata *u) {
+ 
+     pa_assert(u->transport);
+ 
++    if (u->source) {
++        pa_log_debug("add_source() %s source already added.", u->source == u->hsp.sco_source ? "SCO" : "A2DP");
++        return 0;
++    }
++
+     if (USE_SCO_OVER_PCM(u)) {
+         u->source = u->hsp.sco_source;
+         pa_proplist_sets(u->source->proplist, "bluetooth.protocol", pa_bluez4_profile_to_string(u->profile));
+-- 
+2.1.4
+

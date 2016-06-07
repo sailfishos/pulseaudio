@@ -2,7 +2,7 @@ From 6c617e7b4ef436b9db3db69650018b90e37bd8f3 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Thu, 5 Feb 2015 11:05:49 +0200
-Subject: [PATCH 2001/2003] module-rescue-streams: Add parameters to define
+Subject: [PATCH 2001/2006] module-rescue-streams: Add parameters to define
  default targets.
 
 If sink_name or source_name are defined for the module, when streams'

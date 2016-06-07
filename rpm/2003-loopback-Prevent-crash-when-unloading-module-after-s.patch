@@ -2,7 +2,7 @@ From 48e3e1dd29fc31a38d68b9c97de7ff0220917395 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@jolla.com>
 Date: Mon, 4 Apr 2016 17:41:18 +0300
-Subject: [PATCH 2003/2003] loopback: Prevent crash when unloading module after
+Subject: [PATCH 2003/2006] loopback: Prevent crash when unloading module after
  sink_input move.
 
 ---

@@ -1,0 +1,83 @@
+From 93c5176eb836f432d35ae8b77186671137d4de20 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
+ <juho.hamalainen@jolla.com>
+Date: Wed, 1 Jun 2016 13:53:47 +0300
+Subject: [PATCH 2004/2006] loopback: Reset sink-input rate when queue is
+ empty.
+
+Loopback module sample rate updating logic does maximum 2 percent
+changes in the sink-input rate. Due to this if there is long queue of
+audio to play sink-input rate is slowly creeping to quite high compared
+to source-output rate. Then when the queue is empty we have sink-input
+with considerably higher rate than source-output. Now playback starts to
+skip as source-output cannot produce data fast enough, and sink-input
+rate is again slowly lowered in 2 percent decrements until rates again
+more or less match. To avoid skipping until the rates are on even level
+again, reset sink-input rate immediately on peek failure if the rate is
+higher than source-output's rate.
+---
+ src/modules/module-loopback.c | 27 ++++++++++++++++++++++++---
+ 1 file changed, 24 insertions(+), 3 deletions(-)
+
+diff --git a/src/modules/module-loopback.c b/src/modules/module-loopback.c
+index 0788ca2..de8c0b6 100644
+--- a/src/modules/module-loopback.c
++++ b/src/modules/module-loopback.c
+@@ -122,7 +122,10 @@ enum {
+     SINK_INPUT_MESSAGE_POST = PA_SINK_INPUT_MESSAGE_MAX,
+     SINK_INPUT_MESSAGE_REWIND,
+     SINK_INPUT_MESSAGE_LATENCY_SNAPSHOT,
+-    SINK_INPUT_MESSAGE_MAX_REQUEST_CHANGED
++    /* Messages below are sent from the IO thread to the main
++     * thread. */
++    SINK_INPUT_MESSAGE_MAX_REQUEST_CHANGED,
++    SINK_INPUT_MESSAGE_RESET_RATE
+ };
+ 
+ enum {
+@@ -476,6 +479,14 @@ static int sink_input_pop_cb(pa_sink_input *i, size_t nbytes, pa_memchunk *chunk
+ 
+     if (pa_memblockq_peek(u->memblockq, chunk) < 0) {
+         pa_log_info("Could not peek into queue");
++        if (u->source_output &&
++            i->sample_spec.rate > u->source_output->sample_spec.rate) {
++            /* We are probably skipping audio here already, so no extra ill
++             * effect of doing more than 2% sample rate change at the same
++             * time. */
++            pa_log_info("Reset sink-input rate to source-output rate.");
++            pa_asyncmsgq_post(pa_thread_mq_get()->outq, PA_MSGOBJECT(u->sink_input), SINK_INPUT_MESSAGE_RESET_RATE, PA_UINT_TO_PTR(u->source_output->sample_spec.rate), 0, NULL, NULL);
++        }
+         return -1;
+     }
+ 
+@@ -581,8 +592,7 @@ static int sink_input_process_msg_cb(pa_msgobject *obj, int code, void *data, in
+ 
+         case SINK_INPUT_MESSAGE_MAX_REQUEST_CHANGED: {
+             /* This message is sent from the IO thread to the main
+-             * thread! So don't be confused. All the user cases above
+-             * are executed in thread context, but this one is not! */
++             * thread! So don't be confused. */
+ 
+             pa_assert_ctl_context();
+ 
+@@ -590,6 +600,17 @@ static int sink_input_process_msg_cb(pa_msgobject *obj, int code, void *data, in
+                 adjust_rates(u);
+             return 0;
+         }
++
++        case SINK_INPUT_MESSAGE_RESET_RATE: {
++            /* This message is sent from the IO thread to the main
++             * thread! So don't be confused. */
++
++            pa_assert_ctl_context();
++
++            pa_sink_input_set_rate(u->sink_input, PA_PTR_TO_UINT(data));
++
++            return 0;
++        }
+     }
+ 
+     return pa_sink_input_process_msg(obj, code, data, offset, chunk);
+-- 
+2.1.4
+

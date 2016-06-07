@@ -1,0 +1,52 @@
+From 1fb58634fb06fe8771c1a089328162187d34e638 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
+ <juho.hamalainen@jolla.com>
+Date: Thu, 2 Jun 2016 11:44:30 +0300
+Subject: [PATCH 1014/1014] loopback: reset queues after volume was muted.
+
+Non-upstreamable.
+---
+ src/modules/module-loopback.c | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/src/modules/module-loopback.c b/src/modules/module-loopback.c
+index 501097f..b1fdf9f 100644
+--- a/src/modules/module-loopback.c
++++ b/src/modules/module-loopback.c
+@@ -64,6 +64,8 @@ PA_MODULE_USAGE(
+ 
+ #define DEFAULT_ADJUST_TIME_USEC (10*PA_USEC_PER_SEC)
+ 
++#define TRIGGER_RESET_VOLUME_THRESHOLD (1000)
++
+ struct userdata {
+     pa_core *core;
+     pa_module *module;
+@@ -89,6 +91,7 @@ struct userdata {
+     size_t min_memblockq_length;
+ 
+     bool reset_on_attach;
++    bool trigger_reset;
+ 
+     struct {
+         int64_t send_counter;
+@@ -522,6 +525,16 @@ static int sink_input_process_msg_cb(pa_msgobject *obj, int code, void *data, in
+ 
+     switch (code) {
+ 
++        case PA_SINK_INPUT_MESSAGE_SET_SOFT_VOLUME: {
++            if (pa_cvolume_avg(&u->sink_input->soft_volume) < TRIGGER_RESET_VOLUME_THRESHOLD)
++                u->trigger_reset = true;
++            else if (u->trigger_reset) {
++                reset_on_attach(u, "restoring volume");
++                u->trigger_reset = false;
++            }
++            break;
++        }
++
+         case PA_SINK_INPUT_MESSAGE_GET_LATENCY: {
+             pa_usec_t *r = data;
+ 
+-- 
+2.1.4
+

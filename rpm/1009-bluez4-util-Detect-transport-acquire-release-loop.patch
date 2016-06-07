@@ -1,7 +1,7 @@
 From d9be0187889c5e1be369cce6b7fce342bde67060 Mon Sep 17 00:00:00 2001
 From: Timo Honkonen <timo.honkonen@oss.tieto.com>
 Date: Thu, 10 Apr 2014 10:39:06 +0300
-Subject: [PATCH 1009/1011] bluez4-util: Detect transport acquire-release loop.
+Subject: [PATCH 1009/1014] bluez4-util: Detect transport acquire-release loop.
 
 ---
  src/modules/bluetooth/bluez4-util.c | 23 +++++++++++++++++++++++

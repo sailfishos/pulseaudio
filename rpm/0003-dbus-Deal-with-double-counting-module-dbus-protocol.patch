@@ -1,0 +1,37 @@
+From 9d0cca8ac5c19e8f65283d23dfb208416fbe6710 Mon Sep 17 00:00:00 2001
+From: Arun Raghavan <arun@arunraghavan.net>
+Date: Sun, 29 May 2016 10:34:36 +0530
+Subject: [PATCH 3/3] dbus: Deal with double-counting module-dbus-protocol
+
+We ended up dealing with it once in module init, and once more in the
+new module callback. Avoiding it in the second case by name seems to be
+the cleanest solution (else, we need to store the module index somewhere
+in pa_dbusiface_core, which seems about as bad).
+
+Signed-off-by: Arun Raghavan <arun@arunraghavan.net>
+---
+ src/modules/dbus/iface-core.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/modules/dbus/iface-core.c b/src/modules/dbus/iface-core.c
+index 3d2c8ee..508913d 100644
+--- a/src/modules/dbus/iface-core.c
++++ b/src/modules/dbus/iface-core.c
+@@ -1588,6 +1588,14 @@ static pa_hook_result_t module_new_cb(void *hook_data, void *call_data, void *sl
+     pa_assert(c);
+     pa_assert(module);
+ 
++    if (pa_streq(module->name, "module-dbus-protocol")) {
++        /* module-dbus-protocol can only be loaded once, and will be accounted
++         * for while iterating core->modules in pa_dbusiface_core_new(). As it
++         * happens, we will also see it here when the hook is called after the
++         * module is initialised, so we ignore it. */
++        return PA_HOOK_OK;
++    }
++
+     module_iface = pa_dbusiface_module_new(module);
+     pa_assert_se(pa_hashmap_put(c->modules, PA_UINT32_TO_PTR(module->index), module_iface) >= 0);
+ 
+-- 
+2.1.4
+
