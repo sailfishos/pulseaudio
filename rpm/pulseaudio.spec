@@ -43,7 +43,6 @@ Requires:   libsbc >= 1.0
 Requires(post): /sbin/ldconfig
 Requires(postun): /sbin/ldconfig
 BuildRequires:  pkgconfig(alsa) >= 1.0.24
-BuildRequires:  pkgconfig(bluez) >= 4.99
 BuildRequires:  pkgconfig(dbus-1) >= 1.4.12
 BuildRequires:  pkgconfig(glib-2.0) >= 2.4.0
 BuildRequires:  pkgconfig(json-c) >= 0.12
