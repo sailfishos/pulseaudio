@@ -2302,6 +2302,8 @@ if HAVE_BLUEZ_5_NATIVE_HEADSET
 libbluez5_util_la_SOURCES += \
 		modules/bluetooth/backend-native.c
 endif
+libbluez5_util_la_SOURCES += \
+		modules/bluetooth/backend-droid.c
 
 libbluez5_util_la_LDFLAGS = -avoid-version
 libbluez5_util_la_LIBADD = $(MODULE_LIBADD) $(DBUS_LIBS)
