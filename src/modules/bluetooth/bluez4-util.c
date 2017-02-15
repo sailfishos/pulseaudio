@@ -688,8 +688,9 @@ static void get_properties_reply(DBusPendingCall *pending, void *userdata) {
             d->device_info_valid = valid;
     }
 
-    if (dbus_message_is_error(r, DBUS_ERROR_SERVICE_UNKNOWN)) {
-        pa_log_debug("Bluetooth daemon is apparently not available.");
+    if (dbus_message_is_error(r, DBUS_ERROR_SERVICE_UNKNOWN) ||
+        dbus_message_is_error(r, DBUS_ERROR_UNKNOWN_METHOD)) {
+        pa_log_info("Bluetooth bluez4 daemon is apparently not available.");
         remove_all_devices(y);
         goto finish2;
     }
