@@ -1,0 +1,197 @@
+From 2973b45cdf36a3df6f626ee8f8463283790e1ad1 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
+ <juho.hamalainen@jolla.com>
+Date: Wed, 15 Feb 2017 10:41:40 +0200
+Subject: [PATCH 1015/1021] bluez5: add droid backend.
+
+Add a backend for handling HSP/HFP cases with devices that don't really
+use the stream fd for anything other than to keep the transport up.
+---
+ src/modules/bluetooth/bluez5-util.c            | 18 +++++++++++++++---
+ src/modules/bluetooth/bluez5-util.h            |  5 +++++
+ src/modules/bluetooth/module-bluez5-device.c   | 24 ++++++++++++++++++++++--
+ src/modules/bluetooth/module-bluez5-discover.c |  2 ++
+ 4 files changed, 44 insertions(+), 5 deletions(-)
+
+diff --git a/src/modules/bluetooth/bluez5-util.c b/src/modules/bluetooth/bluez5-util.c
+index 03c76bf..aa0434b 100644
+--- a/src/modules/bluetooth/bluez5-util.c
++++ b/src/modules/bluetooth/bluez5-util.c
+@@ -86,7 +86,7 @@ struct pa_bluetooth_discovery {
+     pa_hashmap *transports;
+ 
+     int headset_backend;
+-    pa_bluetooth_backend *ofono_backend, *native_backend;
++    pa_bluetooth_backend *ofono_backend, *native_backend, *droid_backend;
+     PA_LLIST_HEAD(pa_dbus_pending, pending);
+ };
+ 
+@@ -913,10 +913,14 @@ static void get_managed_objects_reply(DBusPendingCall *pending, void *userdata)
+ 
+     y->objects_listed = true;
+ 
+-    if (!y->ofono_backend && y->headset_backend != HEADSET_BACKEND_NATIVE)
++    if (!y->ofono_backend && (y->headset_backend == HEADSET_BACKEND_OFONO ||
++                              y->headset_backend == HEADSET_BACKEND_AUTO))
+         y->ofono_backend = pa_bluetooth_ofono_backend_new(y->core, y);
+-    if (!y->ofono_backend && !y->native_backend && y->headset_backend != HEADSET_BACKEND_OFONO)
++    if (!y->ofono_backend && !y->native_backend && (y->headset_backend == HEADSET_BACKEND_NATIVE ||
++                                                    y->headset_backend == HEADSET_BACKEND_AUTO))
+         y->native_backend = pa_bluetooth_native_backend_new(y->core, y);
++    if (!y->droid_backend && y->headset_backend == HEADSET_BACKEND_DROID)
++        y->droid_backend = pa_bluetooth_droid_backend_new(y->core, y);
+ 
+ finish:
+     dbus_message_unref(r);
+@@ -978,6 +982,10 @@ static DBusHandlerResult filter_cb(DBusConnection *bus, DBusMessage *m, void *us
+                     pa_bluetooth_native_backend_free(y->native_backend);
+                     y->native_backend = NULL;
+                 }
++                if (y->droid_backend) {
++                    pa_bluetooth_droid_backend_free(y->droid_backend);
++                    y->droid_backend = NULL;
++                }
+             }
+ 
+             if (new_owner && *new_owner) {
+@@ -1151,6 +1159,8 @@ const char *pa_bluetooth_profile_to_string(pa_bluetooth_profile_t profile) {
+             return "headset_head_unit";
+         case PA_BLUETOOTH_PROFILE_HEADSET_AUDIO_GATEWAY:
+             return "headset_audio_gateway";
++        case PA_BLUETOOTH_PROFILE_DROID_HEADSET:
++            return "droid_headset";
+         case PA_BLUETOOTH_PROFILE_OFF:
+             return "off";
+     }
+@@ -1673,6 +1683,8 @@ void pa_bluetooth_discovery_unref(pa_bluetooth_discovery *y) {
+         pa_bluetooth_ofono_backend_free(y->ofono_backend);
+     if (y->native_backend)
+         pa_bluetooth_native_backend_free(y->native_backend);
++    if (y->droid_backend)
++        pa_bluetooth_droid_backend_free(y->droid_backend);
+ 
+     if (y->connection) {
+ 
+diff --git a/src/modules/bluetooth/bluez5-util.h b/src/modules/bluetooth/bluez5-util.h
+index d66e8a3..5770439 100644
+--- a/src/modules/bluetooth/bluez5-util.h
++++ b/src/modules/bluetooth/bluez5-util.h
+@@ -48,6 +48,7 @@ typedef enum profile {
+     PA_BLUETOOTH_PROFILE_A2DP_SOURCE,
+     PA_BLUETOOTH_PROFILE_HEADSET_HEAD_UNIT,
+     PA_BLUETOOTH_PROFILE_HEADSET_AUDIO_GATEWAY,
++    PA_BLUETOOTH_PROFILE_DROID_HEADSET,
+     PA_BLUETOOTH_PROFILE_OFF
+ } pa_bluetooth_profile_t;
+ #define PA_BLUETOOTH_PROFILE_COUNT PA_BLUETOOTH_PROFILE_OFF
+@@ -135,6 +136,9 @@ static inline pa_bluetooth_backend *pa_bluetooth_native_backend_new(pa_core *c,
+ static inline void pa_bluetooth_native_backend_free(pa_bluetooth_backend *b) {}
+ #endif
+ 
++pa_bluetooth_backend *pa_bluetooth_droid_backend_new(pa_core *c, pa_bluetooth_discovery *y);
++void pa_bluetooth_droid_backend_free(pa_bluetooth_backend *b);
++
+ pa_bluetooth_transport *pa_bluetooth_transport_new(pa_bluetooth_device *d, const char *owner, const char *path,
+                                                    pa_bluetooth_profile_t p, const uint8_t *config, size_t size);
+ 
+@@ -155,6 +159,7 @@ const char *pa_bluetooth_profile_to_string(pa_bluetooth_profile_t profile);
+ #define HEADSET_BACKEND_OFONO 0
+ #define HEADSET_BACKEND_NATIVE 1
+ #define HEADSET_BACKEND_AUTO 2
++#define HEADSET_BACKEND_DROID 3
+ 
+ pa_bluetooth_discovery* pa_bluetooth_discovery_get(pa_core *core, int headset_backend);
+ pa_bluetooth_discovery* pa_bluetooth_discovery_ref(pa_bluetooth_discovery *y);
+diff --git a/src/modules/bluetooth/module-bluez5-device.c b/src/modules/bluetooth/module-bluez5-device.c
+index 84e6d55..1576398 100644
+--- a/src/modules/bluetooth/module-bluez5-device.c
++++ b/src/modules/bluetooth/module-bluez5-device.c
+@@ -739,7 +739,7 @@ static int transport_acquire(struct userdata *u, bool optional) {
+     pa_log_debug("Acquiring transport %s", u->transport->path);
+ 
+     u->stream_fd = u->transport->acquire(u->transport, optional, &u->read_link_mtu, &u->write_link_mtu);
+-    if (u->stream_fd < 0)
++    if (u->stream_fd < 0 && u->profile != PA_BLUETOOTH_PROFILE_DROID_HEADSET)
+         return -1;
+ 
+     u->transport_acquired = true;
+@@ -964,6 +964,7 @@ static int add_source(struct userdata *u) {
+                 break;
+             case PA_BLUETOOTH_PROFILE_A2DP_SINK:
+             case PA_BLUETOOTH_PROFILE_HEADSET_HEAD_UNIT:
++            case PA_BLUETOOTH_PROFILE_DROID_HEADSET:
+             case PA_BLUETOOTH_PROFILE_OFF:
+                 pa_assert_not_reached();
+                 break;
+@@ -1122,6 +1123,7 @@ static int add_sink(struct userdata *u) {
+                 /* Profile switch should have failed */
+             case PA_BLUETOOTH_PROFILE_A2DP_SOURCE:
+             case PA_BLUETOOTH_PROFILE_HEADSET_HEAD_UNIT:
++            case PA_BLUETOOTH_PROFILE_DROID_HEADSET:
+             case PA_BLUETOOTH_PROFILE_OFF:
+                 pa_assert_not_reached();
+                 break;
+@@ -1150,7 +1152,7 @@ static void transport_config(struct userdata *u) {
+         u->sample_spec.format = PA_SAMPLE_S16LE;
+         u->sample_spec.channels = 1;
+         u->sample_spec.rate = 8000;
+-    } else {
++    } else if (u->profile != PA_BLUETOOTH_PROFILE_DROID_HEADSET) {
+         sbc_info_t *sbc_info = &u->sbc_info;
+         a2dp_sbc_t *config;
+ 
+@@ -1293,6 +1295,7 @@ static pa_direction_t get_profile_direction(pa_bluetooth_profile_t p) {
+         [PA_BLUETOOTH_PROFILE_A2DP_SOURCE] = PA_DIRECTION_INPUT,
+         [PA_BLUETOOTH_PROFILE_HEADSET_HEAD_UNIT] = PA_DIRECTION_INPUT | PA_DIRECTION_OUTPUT,
+         [PA_BLUETOOTH_PROFILE_HEADSET_AUDIO_GATEWAY] = PA_DIRECTION_INPUT | PA_DIRECTION_OUTPUT,
++        [PA_BLUETOOTH_PROFILE_DROID_HEADSET] = 0,
+         [PA_BLUETOOTH_PROFILE_OFF] = 0
+     };
+ 
+@@ -1936,6 +1939,16 @@ static int add_card(struct userdata *u) {
+         pa_hashmap_put(data.profiles, cp->name, cp);
+     }
+ 
++    cp = pa_card_profile_new("droid_headset", _("Droid Headset (HSP/HFP)"), sizeof(pa_bluetooth_profile_t));
++    if (u->device->transports[PA_BLUETOOTH_PROFILE_DROID_HEADSET])
++        cp->available = transport_state_to_availability(u->device->transports[PA_BLUETOOTH_PROFILE_DROID_HEADSET]->state);
++    else
++        cp->available = PA_AVAILABLE_NO;
++    cp->priority = 5;
++    p = PA_CARD_PROFILE_DATA(cp);
++    *p = PA_BLUETOOTH_PROFILE_DROID_HEADSET;
++    pa_hashmap_put(data.profiles, cp->name, cp);
++
+     pa_assert(!pa_hashmap_isempty(data.profiles));
+ 
+     cp = pa_card_profile_new("off", _("Off"), sizeof(pa_bluetooth_profile_t));
+@@ -1957,6 +1970,13 @@ static int add_card(struct userdata *u) {
+     p = PA_CARD_PROFILE_DATA(u->card->active_profile);
+     u->profile = *p;
+ 
++    /* Never start up with droid_headset profile. */
++    if (u->profile == PA_BLUETOOTH_PROFILE_DROID_HEADSET) {
++        u->card->active_profile = cp; /* off */
++        p = PA_CARD_PROFILE_DATA(u->card->active_profile);
++        u->profile = *p;
++    }
++
+     return 0;
+ }
+ 
+diff --git a/src/modules/bluetooth/module-bluez5-discover.c b/src/modules/bluetooth/module-bluez5-discover.c
+index 080e5d0..078c07f 100644
+--- a/src/modules/bluetooth/module-bluez5-discover.c
++++ b/src/modules/bluetooth/module-bluez5-discover.c
+@@ -116,6 +116,8 @@ int pa__init(pa_module *m) {
+         headset_backend = HEADSET_BACKEND_NATIVE;
+     else if (pa_streq(headset_str, "auto"))
+         headset_backend = HEADSET_BACKEND_AUTO;
++    else if (pa_streq(headset_str, "droid"))
++        headset_backend = HEADSET_BACKEND_DROID;
+     else {
+         pa_log("headset parameter must be either ofono, native or auto (found %s)", headset_str);
+         goto fail;
+-- 
+2.7.4
+
