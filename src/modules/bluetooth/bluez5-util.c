@@ -2153,7 +2153,7 @@ static void get_managed_objects_reply(DBusPendingCall *pending, void *userdata) 
     pa_assert_se(r = dbus_pending_call_steal_reply(pending));
 
     if (dbus_message_is_error(r, DBUS_ERROR_UNKNOWN_METHOD)) {
-        pa_log_warn("BlueZ D-Bus ObjectManager not available");
+        pa_log_info("BlueZ5 D-Bus ObjectManager not available");
         goto finish;
     }
 
