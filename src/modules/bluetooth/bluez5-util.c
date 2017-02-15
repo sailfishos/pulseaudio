@@ -86,7 +86,7 @@ struct pa_bluetooth_discovery {
     pa_hashmap *transports;
 
     int headset_backend;
-    pa_bluetooth_backend *ofono_backend, *native_backend;
+    pa_bluetooth_backend *ofono_backend, *native_backend, *droid_backend;
     PA_LLIST_HEAD(pa_dbus_pending, pending);
 };
 
@@ -913,10 +913,14 @@ static void get_managed_objects_reply(DBusPendingCall *pending, void *userdata) 
 
     y->objects_listed = true;
 
-    if (!y->ofono_backend && y->headset_backend != HEADSET_BACKEND_NATIVE)
+    if (!y->ofono_backend && (y->headset_backend == HEADSET_BACKEND_OFONO ||
+                              y->headset_backend == HEADSET_BACKEND_AUTO))
         y->ofono_backend = pa_bluetooth_ofono_backend_new(y->core, y);
-    if (!y->ofono_backend && !y->native_backend && y->headset_backend != HEADSET_BACKEND_OFONO)
+    if (!y->ofono_backend && !y->native_backend && (y->headset_backend == HEADSET_BACKEND_NATIVE ||
+                                                    y->headset_backend == HEADSET_BACKEND_AUTO))
         y->native_backend = pa_bluetooth_native_backend_new(y->core, y);
+    if (!y->droid_backend && y->headset_backend == HEADSET_BACKEND_DROID)
+        y->droid_backend = pa_bluetooth_droid_backend_new(y->core, y);
 
 finish:
     dbus_message_unref(r);
@@ -977,6 +981,10 @@ static DBusHandlerResult filter_cb(DBusConnection *bus, DBusMessage *m, void *us
                 if (y->native_backend) {
                     pa_bluetooth_native_backend_free(y->native_backend);
                     y->native_backend = NULL;
+                }
+                if (y->droid_backend) {
+                    pa_bluetooth_droid_backend_free(y->droid_backend);
+                    y->droid_backend = NULL;
                 }
             }
 
@@ -1151,6 +1159,8 @@ const char *pa_bluetooth_profile_to_string(pa_bluetooth_profile_t profile) {
             return "headset_head_unit";
         case PA_BLUETOOTH_PROFILE_HEADSET_AUDIO_GATEWAY:
             return "headset_audio_gateway";
+        case PA_BLUETOOTH_PROFILE_DROID_HEADSET:
+            return "droid_headset";
         case PA_BLUETOOTH_PROFILE_OFF:
             return "off";
     }
@@ -1673,6 +1683,8 @@ void pa_bluetooth_discovery_unref(pa_bluetooth_discovery *y) {
         pa_bluetooth_ofono_backend_free(y->ofono_backend);
     if (y->native_backend)
         pa_bluetooth_native_backend_free(y->native_backend);
+    if (y->droid_backend)
+        pa_bluetooth_droid_backend_free(y->droid_backend);
 
     if (y->connection) {
 
