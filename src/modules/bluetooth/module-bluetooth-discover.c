@@ -24,6 +24,8 @@
 #include <pulsecore/core-util.h>
 #include <pulsecore/macro.h>
 #include <pulsecore/module.h>
+#include <pulsecore/modargs.h>
+#include <pulsecore/strbuf.h>
 
 #include "module-bluetooth-discover-symdef.h"
 
@@ -32,18 +34,71 @@ PA_MODULE_DESCRIPTION("Detect available Bluetooth daemon and load the correspond
 PA_MODULE_VERSION(PACKAGE_VERSION);
 PA_MODULE_LOAD_ONCE(true);
 PA_MODULE_USAGE(
-    "headset=ofono|native|auto (bluez 5 only)"
-    "autodetect_mtu=<boolean> (bluez 5 only)"
+    "headset=ofono|native|auto (bluez 5 only) "
+    "autodetect_mtu=<boolean> (bluez 5 only) "
+    "sco_sink=<name of sink> (bluez 4 only) "
+    "sco_source=<name of source> (bluez 4 only)"
 );
+
+struct versioned_arg {
+    const uint32_t version;
+    const char *string;
+};
+
+#define BZ_VERSION_4     (0)
+#define BZ_VERSION_5     (1)
+#define BZ_VERSION_COUNT (2)
+
+static const struct versioned_arg args[] = {
+    { BZ_VERSION_4, "sco_sink" },
+    { BZ_VERSION_4, "sco_source" },
+    { BZ_VERSION_5, "headset" },
+    { BZ_VERSION_5, "autodetect_mtu" },
+};
 
 struct userdata {
     uint32_t bluez5_module_idx;
     uint32_t bluez4_module_idx;
 };
 
+static bool key_exists(const char *key, uint32_t *version) {
+    uint32_t i;
+
+    pa_assert(version);
+
+    for (i = 0; i < sizeof(args) / sizeof(struct versioned_arg); i++) {
+        if (pa_safe_streq(args[i].string, key)) {
+            *version = args[i].version;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static void add_arg(pa_strbuf **sb, const char *key, const char *value) {
+    pa_assert(sb);
+    pa_assert(key);
+    pa_assert(value);
+
+    if (!*sb)
+        *sb = pa_strbuf_new();
+    else
+        pa_strbuf_putc(*sb, ' ');
+
+    pa_strbuf_printf(*sb, "%s=%s", key, value);
+}
+
 int pa__init(pa_module* m) {
     struct userdata *u;
     pa_module *mm;
+    pa_modargs *ma;
+    pa_strbuf *bluez_args[BZ_VERSION_COUNT] = { };
+    const char *key;
+    uint32_t version;
+    char *arg_string;
+    void *state = NULL;
+    uint32_t i;
 
     pa_assert(m);
 
@@ -51,17 +106,33 @@ int pa__init(pa_module* m) {
     u->bluez5_module_idx = PA_INVALID_INDEX;
     u->bluez4_module_idx = PA_INVALID_INDEX;
 
+    ma = pa_modargs_new(m->argument, NULL);
+
+    while ((key = pa_modargs_iterate(ma, &state))) {
+        if (key_exists(key, &version))
+            add_arg(&bluez_args[version], key, pa_modargs_get_value(ma, key, ""));
+    }
+
     if (pa_module_exists("module-bluez5-discover")) {
-        mm = pa_module_load(m->core, "module-bluez5-discover", m->argument);
+        arg_string = bluez_args[BZ_VERSION_5] ? pa_strbuf_to_string(bluez_args[BZ_VERSION_5]) : NULL;
+        mm = pa_module_load(m->core, "module-bluez5-discover", arg_string);
         if (mm)
             u->bluez5_module_idx = mm->index;
+        pa_xfree(arg_string);
     }
 
     if (pa_module_exists("module-bluez4-discover")) {
-        mm = pa_module_load(m->core, "module-bluez4-discover",  NULL);
+        arg_string = bluez_args[BZ_VERSION_4] ? pa_strbuf_to_string(bluez_args[BZ_VERSION_4]) : NULL;
+        mm = pa_module_load(m->core, "module-bluez4-discover",  arg_string);
         if (mm)
             u->bluez4_module_idx = mm->index;
+        pa_xfree(arg_string);
     }
+
+    pa_modargs_free(ma);
+    for (i = 0; i < BZ_VERSION_COUNT; i++)
+        if (bluez_args[i])
+            pa_strbuf_free(bluez_args[i]);
 
     if (u->bluez5_module_idx == PA_INVALID_INDEX && u->bluez4_module_idx == PA_INVALID_INDEX) {
         pa_xfree(u);
