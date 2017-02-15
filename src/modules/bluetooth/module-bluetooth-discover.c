@@ -24,6 +24,7 @@
 #include <pulsecore/core-util.h>
 #include <pulsecore/macro.h>
 #include <pulsecore/module.h>
+#include <pulsecore/modargs.h>
 
 #include "module-bluetooth-discover-symdef.h"
 
@@ -32,8 +33,16 @@ PA_MODULE_DESCRIPTION("Detect available Bluetooth daemon and load the correspond
 PA_MODULE_VERSION(PACKAGE_VERSION);
 PA_MODULE_LOAD_ONCE(true);
 PA_MODULE_USAGE(
-    "headset=ofono|native|auto (bluez 5 only)"
+    "bluez4_opt=options passed to bluez4 discover module "
+    "bluez5_opt=options passed to bluez5 discover module"
 );
+
+static const char* const valid_modargs[] = {
+    "bluez4_args",
+    "bluez5_args",
+    "headset", /* backwards compatibility */
+    NULL
+};
 
 struct userdata {
     uint32_t bluez5_module_idx;
@@ -43,24 +52,40 @@ struct userdata {
 int pa__init(pa_module* m) {
     struct userdata *u;
     pa_module *mm;
+    pa_modargs *ma;
 
     pa_assert(m);
+
+    if (!(ma = pa_modargs_new(m->argument, valid_modargs))) {
+        pa_log("Failed to parse module arguments");
+        return -1;
+    }
 
     m->userdata = u = pa_xnew0(struct userdata, 1);
     u->bluez5_module_idx = PA_INVALID_INDEX;
     u->bluez4_module_idx = PA_INVALID_INDEX;
 
+    pa_log_debug("discover args, bluez4: \"%s\" bluez5: \"%s\"",
+                 pa_modargs_get_value(ma, "bluez4_args", ""),
+                 pa_modargs_get_value(ma, "bluez5_args", ""));
+
     if (pa_module_exists("module-bluez5-discover")) {
-        mm = pa_module_load(m->core, "module-bluez5-discover", m->argument);
+        mm = pa_module_load(m->core, "module-bluez5-discover",
+                            pa_modargs_get_value(ma, "headset", NULL) ?
+                                pa_modargs_get_value(ma, "headset", NULL) :
+                                pa_modargs_get_value(ma, "bluez5_args", NULL));
         if (mm)
             u->bluez5_module_idx = mm->index;
     }
 
     if (pa_module_exists("module-bluez4-discover")) {
-        mm = pa_module_load(m->core, "module-bluez4-discover",  NULL);
+        mm = pa_module_load(m->core, "module-bluez4-discover",
+                            pa_modargs_get_value(ma, "bluez4_args", NULL));
         if (mm)
             u->bluez4_module_idx = mm->index;
     }
+
+    pa_modargs_free(ma);
 
     if (u->bluez5_module_idx == PA_INVALID_INDEX && u->bluez4_module_idx == PA_INVALID_INDEX) {
         pa_xfree(u);
