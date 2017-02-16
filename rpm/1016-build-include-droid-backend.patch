@@ -1,0 +1,26 @@
+From 416c4d4ac710e80fc168816b176de25467d98751 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
+ <juho.hamalainen@jolla.com>
+Date: Wed, 15 Feb 2017 10:41:52 +0200
+Subject: [PATCH 1016/1021] build: include droid backend.
+
+---
+ src/Makefile.am | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/Makefile.am b/src/Makefile.am
+index 088dd93..9970368 100644
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -2302,6 +2302,8 @@ if HAVE_BLUEZ_5_NATIVE_HEADSET
+ libbluez5_util_la_SOURCES += \
+ 		modules/bluetooth/backend-native.c
+ endif
++libbluez5_util_la_SOURCES += \
++		modules/bluetooth/backend-droid.c
+ 
+ libbluez5_util_la_LDFLAGS = -avoid-version
+ libbluez5_util_la_LIBADD = $(MODULE_LIBADD) $(DBUS_LIBS)
+-- 
+2.7.4
+

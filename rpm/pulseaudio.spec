@@ -33,11 +33,18 @@ Patch13:    1011-bluez4-device-Don-t-acquire-transport-when-connectin.patch
 Patch14:    1012-bluez4-device-Don-t-re-add-sink-or-source.patch
 Patch15:    1013-loopback-Add-option-to-reset-queues-on-attach.patch
 Patch16:    1014-loopback-reset-queues-after-volume-was-muted.patch
+Patch17:    1015-bluez5-add-droid-backend.patch
+Patch18:    1016-build-include-droid-backend.patch
+Patch19:    1017-bluez5-droid-add-ofono-backend-as-base.patch
+Patch20:    1018-bluez5-droid-add-backend-that-only-acquires-or-relea.patch
+Patch21:    1019-bluetooth-discover-Handle-arguments-for-both-bluez-v.patch
+Patch22:    1020-bluez4-Missing-bluez4-is-not-error.patch
+Patch23:    1021-bluez5-Missing-bluez5-is-not-error.patch
 # Patches pending inclusion to upstream
-Patch17:    2001-module-rescue-streams-Add-parameters-to-define-defau.patch
-Patch18:    2002-combine-sink-Add-argument-for-ignoring-sinks-in-auto.patch
-Patch19:    2003-loopback-Prevent-crash-when-unloading-module-after-s.patch
-Patch20:    2004-loopback-Reset-sink-input-rate-when-queue-is-empty.patch
+Patch24:    2001-module-rescue-streams-Add-parameters-to-define-defau.patch
+Patch25:    2002-combine-sink-Add-argument-for-ignoring-sinks-in-auto.patch
+Patch26:    2003-loopback-Prevent-crash-when-unloading-module-after-s.patch
+Patch27:    2004-loopback-Reset-sink-input-rate-when-queue-is-empty.patch
 Requires:   udev
 Requires:   libsbc >= 1.0
 Requires(post): /sbin/ldconfig
@@ -131,11 +138,18 @@ Makes PulseAudio a drop-in replacement for ESound.
 %patch14 -p1
 %patch15 -p1
 %patch16 -p1
-# Patches pending inclusion to upstream
 %patch17 -p1
 %patch18 -p1
 %patch19 -p1
 %patch20 -p1
+%patch21 -p1
+%patch22 -p1
+%patch23 -p1
+# Patches pending inclusion to upstream
+%patch24 -p1
+%patch25 -p1
+%patch26 -p1
+%patch27 -p1
 
 %build
 echo "%{pulseversion}" > .tarball-version
