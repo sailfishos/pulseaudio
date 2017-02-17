@@ -1,0 +1,15 @@
+[Unit]
+Description=PulseAudio
+After=pre-user-session.target
+Requires=dbus.socket
+
+[Service]
+Type=forking
+PIDFile=%t/pulse/pid
+EnvironmentFile=-/etc/sysconfig/pulseaudio
+ExecStart=/usr/bin/pulseaudio --start $CONFIG
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=user-session.target
