@@ -1,0 +1,166 @@
+* Wed Apr 05 2017 Juho Hamalainen <jusa.mer@hilvi.org> - 8.0+git8
+- [bluez5] Update call volume control patch. JB#38234
+
+* Tue Apr 04 2017 Juho Hamalainen <jusa.mer@hilvi.org> - 8.0+git7
+- [bluez5] Add call volume control. JB#38234
+- [packaging] Update patchset.
+
+* Thu Feb 16 2017 Juho Hamalainen <jusa.mer@hilvi.org> - 8.0+git6
+- [bluez5] Add backend for handling HSP/HFP. JB#36527
+- [packaging] Update patchset.
+
+* Thu Sep 22 2016 Juho Hamalainen <jusa.mer@hilvi.org> - 8.0+git5
+- [bluez5] remove bluez build requirement.Contributes to JB#36045
+- [bluez5] remove bluez build requirement.Contributes to JB#36045
+
+* Tue Jun 07 2016 Juho Hamalainen <jusa.mer@hilvi.org> - 8.0+git4
+- [dbus] Fix crash and double-counting.
+- [limits] Lower limits conf to what PulseAudio actually uses.
+- [module-loopback] Improvements and workarounds. JB#34890
+- [packaging] Update patchset.
+- [pulsecore] Be more strict about object references.
+
+* Mon Apr 04 2016 Juho Hämäläinen <juho.hamalainen@jolla.com> - 8.0+git3
+- [module-loopback] Fix segfault when unloading module after sink_input move. Fixes JB#34771
+- [packaging] Update patchset.
+
+* Tue Mar 29 2016 Juho Hämäläinen <jusa.mer@hilvi.org> - 8.0+git2
+- [module-combine-sink] Add argument for ignoring sinks in automatic mode. Fixes MER#1552
+- [packaging] Update patchset.
+
+* Tue Mar 22 2016 Juho Hämäläinen <jusa.mer@hilvi.org> - 8.0+git1
+- [packaging] Update patchset for PulseAudio 8.0. MER#1507
+- [packaging] Update spec for PulseAudio 8.0. MER#1507
+
+* Mon Jan 04 2016 stskeeps <carsten.munk@gmail.com> - 6.0+git5
+- [packaging] Nemo-Mer merge: fix x11 build. Contributes to MER#1440
+
+* Tue Sep 29 2015 Juho Hämäläinen <jusa@hilvi.org> - 6.0+git4
+- [spec] Change build requirements on systemd libs. Fixes JB#32563
+
+* Thu Jun 04 2015 Juho Hämäläinen <jusa@hilvi.org> - 6.0+git3
+- [bluez4] Setup SBC before creating A2DP sink or source. Fixes JB#29262
+- [bluez4] Try to acquire SCO transport on device creation. Fixes JB#28872
+- [packaging] Update patchset.
+- [srbchannel] Add patches fixing and enabling srbchannel. Fixes JB#28132
+
+* Tue May 05 2015 Juho Hämäläinen <jusa@hilvi.org> - 6.0+git2
+- [bluez4] Keep transport when starting in HFP mode. Fixes JB#28167
+- [bluez4] Make sure SCO is configured when creating device.
+- [packaging] Update patchset.
+
+* Mon May 04 2015 Juho Hämäläinen <jusa@hilvi.org> - 6.0+git1
+- [bluez4] Don't acquire transport when creating device. Contributes to JB#27276
+- [dbus-protocol] Use hooks for all events. Fixes JB#27166
+- [packaging] Update patches for PulseAudio 6.0.
+- [packaging] Update patches for PulseAudio 6.0. Contributes to JB#26620
+
+* Mon Mar 30 2015 Juho Hämäläinen <juho.hamalainen@tieto.com> - 5.0+git9
+- [packaging] Add patches for starting bluez4 device suspended. Contributes to JB#27276
+- [packaging] Fix small warning in patch 1014.
+- [spec] Claim pulseaudio dirs.
+- [spec] Claim pulseaudio dirs. Contributes: JB#22780
+
+* Fri Aug 22 2014 Pasi Sjöholm <pasi.sjoholm@siirappi.com> - 5.0+git8
+- [packaging] Fix build with json-c 0.12
+
+* Fri Aug 15 2014 Juho Hämäläinen <jusa@hilvi.org> - 5.0+git7
+- [packaging] Add fix for XDG_RUNTIME_DIR usage.
+
+* Thu Jul 17 2014 Juho Hämäläinen <jusa@hilvi.org> - 5.0+git6
+- [packaging] Add fix for bluez4-device assert.
+
+* Wed Jun 18 2014 Juho Hämäläinen <jusa@hilvi.org> - 5.0+git5
+- [packaging] Start PulseAudio daemon in forking mode.
+
+* Fri Jun 13 2014 Juho Hämäläinen <jusa@hilvi.org> - 5.0+git4
+- [packaging] Drop boardname patch, use systemd/sysconfig in service file.
+- [packaging] Update pulseaudio.service file.
+
+* Fri May 23 2014 Pekka Lundstrom <pekka.lundstrom@jollamobile.com> - 5.0+git3
+- [packaging] do not install dbus pulseaudio-system.conf
+
+* Tue Apr 15 2014 Juho Hämäläinen <jusa@hilvi.org> - 5.0+git2
+- [packaging] Add dbus protocol module assert fix.
+
+* Mon Apr 14 2014 Juho Hämäläinen <jusa@hilvi.org> - 5.0+git1
+- [packaging] Update packaging for PulseAudio 5.0.
+- [packaging] Update patches for PulseAudio 5.0.
+
+* Thu Feb 27 2014 Juho Hämäläinen <jusa@hilvi.org> - 4.0+git8
+- [packaging] Add patch for suspend-on-idle handling of corked streams.
+
+* Tue Feb 04 2014 Juho Hämäläinen <jusa@hilvi.org> - 4.0+git7
+- [neon] enable neon for arm only
+- [packaging] Add 64bit compile fix
+
+* Mon Jan 20 2014 Juho Hämäläinen <jusa@hilvi.org> - 4.0+git6
+- [packaging] Add bluetooth related patches.
+
+* Wed Jan 01 2014 Islam Amer <pharon@gmail.com> - 4.0+git5
+- [init] Add pulseaudio to be started by default
+- [packaging] Make X11 related buildrequires and subpackages optional.
+
+* Thu Oct 17 2013 Juho Hämäläinen <jusa@hilvi.org> - 4.0-update84
+- [packaging] Add module-bluetooth-device assert fix.
+
+* Mon Oct 07 2013 Juho Hämäläinen <jusa@hilvi.org> - 4.0-update83
+- [packaging] Add client autospawn patch.
+- [packaging] Update bluetooth device patch.
+
+* Tue Sep 24 2013 Juho Hämäläinen <jusa@hilvi.org> - 4.0-update82
+- [packaging] Change resampler patch and add patch for bluetooth device.
+- [packaging] Update yaml and spec.
+
+* Mon Sep 09 2013 Marko Saukko <marko.saukko@jollamobile.com> - 4.0-update81
+- [packaging] remove prehistoric changelog entries
+
+* Mon Sep 09 2013 Marko Saukko <marko.saukko@jollamobile.com> - 4.0
+- [packaging] Add 4 patches.
+- [packaging] Drop changelogs before year 2011.
+- [packaging] Initial packaging for PulseAudio 4.0.
+- [packaging] Need to cd to dir before build because of submodule.
+- [packaging] run bootstrap.sh + %configure intead of %reconfigure
+- [packaging] tar_git pushes .tarball-version to wrong dir for build lets move it to right place.
+
+* Thu Feb 21 2013 Pekka Lundstrom <pekka.lundstrom@jollamobile.com> - 2.1
+- Start requires only xorg.service, not full xorg.target
+
+* Thu Dec 06 2012 Carsten Munk <carsten.munk@jollamobile.com> - 2.1
+- Make systemd user session service restart always 
+
+* Wed Nov 14 2012 Juho Hamalainen <juho.hamalainen@tieto.com> - 2.1
+- Add patch to use XDG_RUNTIME_DIR for runtime files.
+- Add pulseaudio.service file for user-session systemd.
+
+* Sun Oct 14 2012 Tanu Kaskinen <tanu.kaskinen@jollamobile.com> - 2.1
+- Update PulseAudio to version 2.1.
+- Drop almost all patches. Most of the old patches were from upstream, but also
+  some non-upstream patches that didn't seem important have been discarded.
+  (Sorry for not mentioning the exact patches here. I have lost the notes that
+  I made when reviewing the patch set.) There are two patches left that are
+  derived from the old patch set: a patch for installing devel files for
+  out-of-tree modules and a patch for loading hardware specific configuration
+  based on /etc/boardname.
+- Add a couple of fixes from upstream.
+- Add patches for handling the sink and source latency flags better, required
+  for pulseaudio-modules-nemo. The patches have been submitted to upstream, but
+  no feedback has been received yet.
+- Change the way daemon.conf is customized: use patches instead of overwriting
+  upstream version in the install post script. That way it's easier to know
+  what exactly has been customized and why.
+- Remove the custom default.pa file, because there's no documented reason to
+  diverge from upstream.
+- Remove ia32_oemtablet.pa. It seemed to be tailored for specific hardware, and
+  special configuration for specific hardware is supposed be provided in
+  separate hardware adaptation packages.
+- Remove mixer-0.9.22-orig.tar.bz2. Apparently it was used to replace the mixer
+  configuration in 1.0 with the 0.9.22 version. The stated purpose was to fix
+  some regression bugs in MeeGo (see the entry from Apr 18 2011 in this file).
+  I hope those regressions have been fixed in upstream.
+- New binary package: pulseaudio-kde. If anyone wants to install KDE on Mer,
+  the package can be useful, and others can leave it uninstalled.
+- New binary package: pulseaudio-esound. The package adds modules for making
+  PulseAudio a drop-in replacement for EsounD. I split this off of the main
+  package, because I thought it would be a good idea not to enable support for
+  the obsolete protocol by default.
