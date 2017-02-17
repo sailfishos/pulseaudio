@@ -1,0 +1,17 @@
+[Unit]
+Description=PulseAudio
+After=pre-user-session.target
+Requires=dbus.socket
+
+[Service]
+EnvironmentFile=-/etc/sysconfig/pulseaudio
+# Wait until system PulseAudio daemon has completely shut down before
+# starting user session daemon.
+ExecStartPre=/bin/sh -c "while [ -f /run/pulse/pid ]; do sleep 1; done"
+ExecStart=/usr/bin/pulseaudio --daemonize=no $CONFIG
+Restart=always
+RestartSec=1
+Type=notify
+
+[Install]
+WantedBy=user-session.target
