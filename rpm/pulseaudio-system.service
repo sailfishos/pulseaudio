@@ -1,0 +1,20 @@
+# System-wide mode to use before user session
+
+[Unit]
+Description=PulseAudio (system-wide mode)
+After=dbus.socket
+Requires=dbus.socket
+RefuseManualStart=yes
+Before=multi-user.target systemd-user-sessions.service
+PartOf=emergency-call.target
+
+[Service]
+EnvironmentFile=-/etc/sysconfig/pulseaudio
+ExecStart=/usr/bin/pulseaudio --daemonize=no --system --disallow-module-loading $CONFIG
+# Make sure pid file is cleaned when stopping system PulseAudio,
+# as user session service will defer startup until the pid file
+# doesn't exist anymore.
+ExecStopPost=/bin/sh -c "rm -f /run/pulse/pid"
+Restart=always
+RestartSec=1
+Type=notify
