@@ -2,7 +2,7 @@ From 2973b45cdf36a3df6f626ee8f8463283790e1ad1 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@jolla.com>
 Date: Wed, 15 Feb 2017 10:41:40 +0200
-Subject: [PATCH 1015/1021] bluez5: add droid backend.
+Subject: [PATCH 1015/1022] bluez5: add droid backend.
 
 Add a backend for handling HSP/HFP cases with devices that don't really
 use the stream fd for anything other than to keep the transport up.

@@ -40,11 +40,12 @@ Patch20:    1018-bluez5-droid-add-backend-that-only-acquires-or-relea.patch
 Patch21:    1019-bluetooth-discover-Handle-arguments-for-both-bluez-v.patch
 Patch22:    1020-bluez4-Missing-bluez4-is-not-error.patch
 Patch23:    1021-bluez5-Missing-bluez5-is-not-error.patch
+Patch24:    1022-bluez5-droid-Add-call-volume-control.patch
 # Patches pending inclusion to upstream
-Patch24:    2001-module-rescue-streams-Add-parameters-to-define-defau.patch
-Patch25:    2002-combine-sink-Add-argument-for-ignoring-sinks-in-auto.patch
-Patch26:    2003-loopback-Prevent-crash-when-unloading-module-after-s.patch
-Patch27:    2004-loopback-Reset-sink-input-rate-when-queue-is-empty.patch
+Patch25:    2001-module-rescue-streams-Add-parameters-to-define-defau.patch
+Patch26:    2002-combine-sink-Add-argument-for-ignoring-sinks-in-auto.patch
+Patch27:    2003-loopback-Prevent-crash-when-unloading-module-after-s.patch
+Patch28:    2004-loopback-Reset-sink-input-rate-when-queue-is-empty.patch
 Requires:   udev
 Requires:   libsbc >= 1.0
 Requires(post): /sbin/ldconfig
@@ -145,11 +146,12 @@ Makes PulseAudio a drop-in replacement for ESound.
 %patch21 -p1
 %patch22 -p1
 %patch23 -p1
-# Patches pending inclusion to upstream
 %patch24 -p1
+# Patches pending inclusion to upstream
 %patch25 -p1
 %patch26 -p1
 %patch27 -p1
+%patch28 -p1
 
 %build
 echo "%{pulseversion}" > .tarball-version

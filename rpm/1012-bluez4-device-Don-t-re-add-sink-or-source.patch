@@ -2,7 +2,7 @@ From 5326df1bc262cd6c73f07d20bc2c705850a06f53 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@jolla.com>
 Date: Wed, 1 Jun 2016 14:39:08 +0300
-Subject: [PATCH 1012/1021] bluez4-device: Don't re-add sink or source.
+Subject: [PATCH 1012/1022] bluez4-device: Don't re-add sink or source.
 
 ---
  src/modules/bluetooth/module-bluez4-device.c | 10 ++++++++++

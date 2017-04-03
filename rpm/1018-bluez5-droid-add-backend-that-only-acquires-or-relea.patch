@@ -2,7 +2,7 @@ From 2361a658542f76dc7dd5d86f75d145f90c5e7ce8 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@jolla.com>
 Date: Wed, 15 Feb 2017 12:58:41 +0200
-Subject: [PATCH 1018/1021] bluez5-droid: add backend that only acquires or
+Subject: [PATCH 1018/1022] bluez5-droid: add backend that only acquires or
  releases the transport.
 
 ---
