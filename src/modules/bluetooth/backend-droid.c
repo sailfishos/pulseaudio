@@ -34,11 +34,15 @@
 
 #define HFP_AUDIO_CODEC_CVSD    0x01
 #define HFP_AUDIO_CODEC_MSBC    0x02
+#define HSP_MAX_GAIN 15
 
 #define OFONO_SERVICE "org.ofono"
 #define HF_AUDIO_AGENT_INTERFACE OFONO_SERVICE ".HandsfreeAudioAgent"
 #define HF_AUDIO_MANAGER_INTERFACE OFONO_SERVICE ".HandsfreeAudioManager"
 #define HF_AUDIO_CARD_INTERFACE OFONO_SERVICE ".HandsfreeAudioCard"
+
+#define BT_VOLUME_INTERFACE "org.nemomobile.ofono.bluetooth.CallVolume"
+#define VOICECALL_MANAGER_INTERFACE "org.ofono.VoiceCallManager"
 
 #define HF_AUDIO_AGENT_PATH "/HandsfreeAudioAgent"
 
@@ -79,6 +83,8 @@ struct pa_bluetooth_backend {
     pa_dbus_connection *connection;
     pa_hashmap *cards;
     char *ofono_bus_id;
+    pa_hook_slot *sink_input_volume_changed_slot;
+    char *modem_path;
 
     PA_LLIST_HEAD(pa_dbus_pending, pending);
 };
@@ -183,6 +189,108 @@ static int hf_audio_agent_transport_acquire(pa_bluetooth_transport *t, bool opti
     return -1;
 }
 
+static void headset_volume_changed(pa_bluetooth_backend *backend, int gain) {
+    pa_sink_input *si;
+    uint32_t idx = 0;
+
+    pa_assert(backend);
+
+    PA_IDXSET_FOREACH(si, backend->core->sink_inputs, idx) {
+        if (pa_safe_streq(pa_proplist_gets(si->proplist, PA_PROP_MEDIA_ROLE), "phone")) {
+            pa_cvolume volume;
+            pa_volume_t v;
+
+            v = (pa_volume_t) (gain * PA_VOLUME_NORM / HSP_MAX_GAIN);
+
+            /* increment volume by one to correct rounding errors */
+            if (v < PA_VOLUME_NORM)
+                v++;
+
+            pa_cvolume_set(&volume, si->sample_spec.channels, v);
+
+            pa_log_debug("headset volume changes to %d -> %d", gain, v);
+
+            pa_sink_input_set_volume(si, &volume, true, false);
+
+            break;
+        }
+    }
+}
+
+static void headset_volume_set(pa_bluetooth_backend *backend, unsigned char gain) {
+    DBusMessage *m;
+    DBusMessageIter arg_i, var_i;
+    const char *p = "SpeakerVolume";
+
+    pa_assert(backend);
+
+    if (!backend->modem_path) {
+        pa_log_warn("Set volume: modem path unknown");
+        return;
+    }
+
+    pa_assert_se(m = dbus_message_new_method_call(OFONO_SERVICE, backend->modem_path, BT_VOLUME_INTERFACE, "SetProperty"));
+
+    dbus_message_iter_init_append(m, &arg_i);
+    dbus_message_iter_append_basic(&arg_i, DBUS_TYPE_STRING, &p);
+    dbus_message_iter_open_container(&arg_i, DBUS_TYPE_VARIANT, DBUS_TYPE_BYTE_AS_STRING, &var_i);
+    dbus_message_iter_append_basic(&var_i, DBUS_TYPE_BYTE, &gain);
+    dbus_message_iter_close_container(&arg_i, &var_i);
+
+    dbus_connection_send(pa_dbus_connection_get(backend->connection), m, NULL);
+    dbus_message_unref(m);
+}
+
+static pa_hook_result_t sink_input_volume_changed_cb(pa_core *c, pa_sink_input *si, pa_bluetooth_backend *backend) {
+    pa_cvolume volume;
+
+    pa_assert(c);
+    pa_assert(si);
+    pa_assert(backend);
+
+    if (pa_safe_streq(pa_proplist_gets(si->proplist, PA_PROP_MEDIA_ROLE), "phone")) {
+        pa_volume_t v;
+        pa_volume_t gain;
+
+        pa_sink_input_get_volume(si, &volume, true);
+        v = pa_cvolume_avg(&volume);
+
+        gain = (pa_volume_t) (v * HSP_MAX_GAIN / PA_VOLUME_NORM);
+
+        if (gain > HSP_MAX_GAIN)
+            gain = HSP_MAX_GAIN;
+
+        pa_log_debug("phone volume changes to %d -> %d", v, gain);
+
+        headset_volume_set(backend, (unsigned char) gain);
+
+    }
+
+    return PA_HOOK_OK;
+}
+
+static void volume_control_init(pa_bluetooth_backend *backend) {
+    pa_assert(backend);
+
+    if (backend->sink_input_volume_changed_slot)
+        return;
+
+    backend->sink_input_volume_changed_slot = pa_hook_connect(&backend->core->hooks[PA_CORE_HOOK_SINK_INPUT_VOLUME_CHANGED],
+                                                              PA_HOOK_LATE,
+                                                              (pa_hook_cb_t) sink_input_volume_changed_cb,
+                                                              backend);
+}
+
+static void volume_control_release(pa_bluetooth_backend *backend) {
+    pa_assert(backend);
+
+    if (!backend->sink_input_volume_changed_slot)
+        return;
+
+    pa_hook_slot_free(backend->sink_input_volume_changed_slot);
+    backend->sink_input_volume_changed_slot = NULL;
+}
+
 static void hf_audio_agent_transport_release(pa_bluetooth_transport *t) {
     struct hf_audio_card *card = t->userdata;
 
@@ -190,6 +298,8 @@ static void hf_audio_agent_transport_release(pa_bluetooth_transport *t) {
 
     pa_log_debug("Trying to release transport for card %s (fd %d)",
                  card->path, card->fd);
+
+    volume_control_release(card->backend);
 
     if (card->fd > 0) {
         pa_log_debug("Transport available for card %s (fd %d), releasing now",
@@ -484,6 +594,60 @@ static DBusHandlerResult filter_cb(DBusConnection *bus, DBusMessage *m, void *da
         }
 
         hf_audio_agent_card_removed(backend, p);
+    } else if (dbus_message_is_signal(m, BT_VOLUME_INTERFACE, "PropertyChanged")) {
+        DBusMessageIter arg_i, var_i;
+        const char *p;
+
+        if (!dbus_message_iter_init(m, &arg_i) || !pa_streq(dbus_message_get_signature(m), "sv")) {
+            pa_log_error("Failed to parse " BT_VOLUME_INTERFACE ".PropertyChanged");
+            goto fail;
+        }
+
+        dbus_message_iter_get_basic(&arg_i, &p);
+        pa_assert_se(dbus_message_iter_next(&arg_i));
+
+        pa_assert(dbus_message_iter_get_arg_type(&arg_i) == DBUS_TYPE_VARIANT);
+
+        dbus_message_iter_recurse(&arg_i, &var_i);
+
+        if (pa_streq(p, "SpeakerVolume")) {
+            unsigned char volume;
+
+            pa_assert(dbus_message_iter_get_arg_type(&var_i) == DBUS_TYPE_BYTE);
+            dbus_message_iter_get_basic(&var_i, &volume);
+            pa_log_debug(BT_VOLUME_INTERFACE " property SpeakerVolume changes to %d", (int) volume);
+            headset_volume_changed(backend, (int) volume);
+        } else if (pa_streq(p, "MicrophoneVolume")) {
+            unsigned char volume;
+
+            pa_assert(dbus_message_iter_get_arg_type(&var_i) == DBUS_TYPE_BYTE);
+            dbus_message_iter_get_basic(&var_i, &volume);
+            pa_log_debug(BT_VOLUME_INTERFACE " property MicrophoneVolume changes to %d", (int) volume);
+        } else if (pa_streq(p, "Muted")) {
+            dbus_bool_t muted;
+
+            pa_assert(dbus_message_iter_get_arg_type(&var_i) == DBUS_TYPE_BOOLEAN);
+            dbus_message_iter_get_basic(&var_i, &muted);
+            pa_log_debug(BT_VOLUME_INTERFACE " property Muted changes to %s", muted ? "true" : "false");
+        }
+    } else if (dbus_message_is_signal(m, VOICECALL_MANAGER_INTERFACE, "CallAdded")) {
+        const char *p = NULL;
+
+        /* We are only interested in the object path, and the modem part of it. */
+        dbus_message_get_args(m, NULL, DBUS_TYPE_OBJECT_PATH, &p, DBUS_TYPE_INVALID);
+
+        if (p && strlen(p) > 2) {
+            char *modem;
+            char *d;
+            modem = pa_xstrdup(p);
+            if ((d = strstr(modem + 1, "/"))) {
+                d[0] = '\0';
+                pa_log_debug("Setting modem path %s", modem);
+                pa_xfree(backend->modem_path);
+                backend->modem_path = modem;
+            } else
+                pa_xfree(modem);
+        }
     }
 
 fail:
@@ -580,6 +744,8 @@ static DBusMessage *hf_audio_agent_new_connection(DBusConnection *c, DBusMessage
 
     pa_bluetooth_transport_set_state(card->transport, PA_BLUETOOTH_TRANSPORT_STATE_PLAYING);
 
+    volume_control_init(card->backend);
+
     pa_assert_se(r = dbus_message_new_method_return(m));
 
     return r;
@@ -659,6 +825,8 @@ pa_bluetooth_backend *pa_bluetooth_droid_backend_new(pa_core *c, pa_bluetooth_di
             "arg0='" OFONO_SERVICE "'",
             "type='signal',sender='" OFONO_SERVICE "',interface='" HF_AUDIO_MANAGER_INTERFACE "',member='CardAdded'",
             "type='signal',sender='" OFONO_SERVICE "',interface='" HF_AUDIO_MANAGER_INTERFACE "',member='CardRemoved'",
+            "type='signal',sender='" OFONO_SERVICE "',interface='" BT_VOLUME_INTERFACE "',member='PropertyChanged'",
+            "type='signal',sender='" OFONO_SERVICE "',interface='" VOICECALL_MANAGER_INTERFACE "',member='CallAdded'",
             NULL) < 0) {
         pa_log("Failed to add oFono D-Bus matches: %s", err.message);
         dbus_connection_remove_filter(pa_dbus_connection_get(backend->connection), filter_cb, backend);
@@ -689,6 +857,8 @@ void pa_bluetooth_droid_backend_free(pa_bluetooth_backend *backend) {
             "arg0='" OFONO_SERVICE "'",
             "type='signal',sender='" OFONO_SERVICE "',interface='" HF_AUDIO_MANAGER_INTERFACE "',member='CardAdded'",
             "type='signal',sender='" OFONO_SERVICE "',interface='" HF_AUDIO_MANAGER_INTERFACE "',member='CardRemoved'",
+            "type='signal',sender='" OFONO_SERVICE "',interface='" BT_VOLUME_INTERFACE "',member='PropertyChanged'",
+            "type='signal',sender='" OFONO_SERVICE "',interface='" VOICECALL_MANAGER_INTERFACE "',member='CallAdded'",
             NULL);
 
     dbus_connection_remove_filter(pa_dbus_connection_get(backend->connection), filter_cb, backend);
@@ -696,6 +866,9 @@ void pa_bluetooth_droid_backend_free(pa_bluetooth_backend *backend) {
     pa_dbus_connection_unref(backend->connection);
 
     pa_hashmap_free(backend->cards);
+
+    volume_control_release(backend);
+    pa_xfree(backend->modem_path);
 
     pa_xfree(backend);
 }
