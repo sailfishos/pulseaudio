@@ -2,7 +2,7 @@ From 98fc7bc3d6d0ec5fb30fd6fb61ee964c477b4ecf Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@jolla.com>
 Date: Wed, 15 Feb 2017 17:26:33 +0200
-Subject: [PATCH 1020/1021] bluez4: Missing bluez4 is not error.
+Subject: [PATCH 1020/1022] bluez4: Missing bluez4 is not error.
 
 ---
  src/modules/bluetooth/bluez4-util.c | 5 +++--

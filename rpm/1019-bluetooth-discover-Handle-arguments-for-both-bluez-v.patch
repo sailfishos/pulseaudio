@@ -2,7 +2,7 @@ From 618402366082ca807fa170d0fb54d6246b2b5340 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@jolla.com>
 Date: Wed, 15 Feb 2017 17:25:55 +0200
-Subject: [PATCH 1019/1021] bluetooth-discover: Handle arguments for both bluez
+Subject: [PATCH 1019/1022] bluetooth-discover: Handle arguments for both bluez
  versions.
 
 ---

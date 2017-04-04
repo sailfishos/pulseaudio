@@ -2,7 +2,7 @@ From ab18f92f749d2f75e853dc53b13d3a965055fb3c Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@tieto.com>
 Date: Thu, 10 Apr 2014 10:34:06 +0300
-Subject: [PATCH 1008/1021] bluez4-device: Default to using A2DP profile
+Subject: [PATCH 1008/1022] bluez4-device: Default to using A2DP profile
  initially.
 
 By default have A2DP profiles with higher priority than HFP profiles,

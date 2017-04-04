@@ -2,7 +2,7 @@ From 2390f5595dcc8002f8ba473ffe156f44a881893b Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@jolla.com>
 Date: Wed, 15 Feb 2017 10:42:12 +0200
-Subject: [PATCH 1017/1021] bluez5-droid: add ofono backend as base.
+Subject: [PATCH 1017/1022] bluez5-droid: add ofono backend as base.
 
 ---
  src/modules/bluetooth/backend-droid.c | 663 ++++++++++++++++++++++++++++++++++
