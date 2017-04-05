@@ -1,4 +1,4 @@
-From df450fe2fefd21589199278b919a20f0f0f2bccd Mon Sep 17 00:00:00 2001
+From e3c02e8787b55b939349ca241a5f065c1505da15 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Juho=20H=C3=A4m=C3=A4l=C3=A4inen?=
  <juho.hamalainen@jolla.com>
 Date: Mon, 3 Apr 2017 15:55:58 +0300
@@ -9,7 +9,7 @@ Subject: [PATCH 1022/1022] bluez5-droid: Add call volume control.
  1 file changed, 173 insertions(+)
 
 diff --git a/src/modules/bluetooth/backend-droid.c b/src/modules/bluetooth/backend-droid.c
-index ffecfa1..0803ddf 100644
+index ffecfa1..a659902 100644
 --- a/src/modules/bluetooth/backend-droid.c
 +++ b/src/modules/bluetooth/backend-droid.c
 @@ -34,12 +34,16 @@
@@ -23,7 +23,7 @@ index ffecfa1..0803ddf 100644
  #define HF_AUDIO_MANAGER_INTERFACE OFONO_SERVICE ".HandsfreeAudioManager"
  #define HF_AUDIO_CARD_INTERFACE OFONO_SERVICE ".HandsfreeAudioCard"
  
-+#define SFOS_VOLUME_INTERFACE "org.sfos.ofono.bluetooth.CallVolume"
++#define BT_VOLUME_INTERFACE "org.nemomobile.ofono.bluetooth.CallVolume"
 +#define VOICECALL_MANAGER_INTERFACE "org.ofono.VoiceCallManager"
 +
  #define HF_AUDIO_AGENT_PATH "/HandsfreeAudioAgent"
@@ -82,7 +82,7 @@ index ffecfa1..0803ddf 100644
 +        return;
 +    }
 +
-+    pa_assert_se(m = dbus_message_new_method_call(OFONO_SERVICE, backend->modem_path, SFOS_VOLUME_INTERFACE, "SetProperty"));
++    pa_assert_se(m = dbus_message_new_method_call(OFONO_SERVICE, backend->modem_path, BT_VOLUME_INTERFACE, "SetProperty"));
 +
 +    dbus_message_iter_init_append(m, &arg_i);
 +    dbus_message_iter_append_basic(&arg_i, DBUS_TYPE_STRING, &p);
@@ -160,12 +160,12 @@ index ffecfa1..0803ddf 100644
          }
  
          hf_audio_agent_card_removed(backend, p);
-+    } else if (dbus_message_is_signal(m, SFOS_VOLUME_INTERFACE, "PropertyChanged")) {
++    } else if (dbus_message_is_signal(m, BT_VOLUME_INTERFACE, "PropertyChanged")) {
 +        DBusMessageIter arg_i, var_i;
 +        const char *p;
 +
 +        if (!dbus_message_iter_init(m, &arg_i) || !pa_streq(dbus_message_get_signature(m), "sv")) {
-+            pa_log_error("Failed to parse " SFOS_VOLUME_INTERFACE ".PropertyChanged");
++            pa_log_error("Failed to parse " BT_VOLUME_INTERFACE ".PropertyChanged");
 +            goto fail;
 +        }
 +
@@ -181,20 +181,20 @@ index ffecfa1..0803ddf 100644
 +
 +            pa_assert(dbus_message_iter_get_arg_type(&var_i) == DBUS_TYPE_BYTE);
 +            dbus_message_iter_get_basic(&var_i, &volume);
-+            pa_log_debug(SFOS_VOLUME_INTERFACE " property SpeakerVolume changes to %d", (int) volume);
++            pa_log_debug(BT_VOLUME_INTERFACE " property SpeakerVolume changes to %d", (int) volume);
 +            headset_volume_changed(backend, (int) volume);
 +        } else if (pa_streq(p, "MicrophoneVolume")) {
 +            unsigned char volume;
 +
 +            pa_assert(dbus_message_iter_get_arg_type(&var_i) == DBUS_TYPE_BYTE);
 +            dbus_message_iter_get_basic(&var_i, &volume);
-+            pa_log_debug(SFOS_VOLUME_INTERFACE " property MicrophoneVolume changes to %d", (int) volume);
++            pa_log_debug(BT_VOLUME_INTERFACE " property MicrophoneVolume changes to %d", (int) volume);
 +        } else if (pa_streq(p, "Muted")) {
 +            dbus_bool_t muted;
 +
 +            pa_assert(dbus_message_iter_get_arg_type(&var_i) == DBUS_TYPE_BOOLEAN);
 +            dbus_message_iter_get_basic(&var_i, &muted);
-+            pa_log_debug(SFOS_VOLUME_INTERFACE " property Muted changes to %s", muted ? "true" : "false");
++            pa_log_debug(BT_VOLUME_INTERFACE " property Muted changes to %s", muted ? "true" : "false");
 +        }
 +    } else if (dbus_message_is_signal(m, VOICECALL_MANAGER_INTERFACE, "CallAdded")) {
 +        const char *p = NULL;
@@ -230,7 +230,7 @@ index ffecfa1..0803ddf 100644
              "arg0='" OFONO_SERVICE "'",
              "type='signal',sender='" OFONO_SERVICE "',interface='" HF_AUDIO_MANAGER_INTERFACE "',member='CardAdded'",
              "type='signal',sender='" OFONO_SERVICE "',interface='" HF_AUDIO_MANAGER_INTERFACE "',member='CardRemoved'",
-+            "type='signal',sender='" OFONO_SERVICE "',interface='" SFOS_VOLUME_INTERFACE "',member='PropertyChanged'",
++            "type='signal',sender='" OFONO_SERVICE "',interface='" BT_VOLUME_INTERFACE "',member='PropertyChanged'",
 +            "type='signal',sender='" OFONO_SERVICE "',interface='" VOICECALL_MANAGER_INTERFACE "',member='CallAdded'",
              NULL) < 0) {
          pa_log("Failed to add oFono D-Bus matches: %s", err.message);
@@ -239,7 +239,7 @@ index ffecfa1..0803ddf 100644
              "arg0='" OFONO_SERVICE "'",
              "type='signal',sender='" OFONO_SERVICE "',interface='" HF_AUDIO_MANAGER_INTERFACE "',member='CardAdded'",
              "type='signal',sender='" OFONO_SERVICE "',interface='" HF_AUDIO_MANAGER_INTERFACE "',member='CardRemoved'",
-+            "type='signal',sender='" OFONO_SERVICE "',interface='" SFOS_VOLUME_INTERFACE "',member='PropertyChanged'",
++            "type='signal',sender='" OFONO_SERVICE "',interface='" BT_VOLUME_INTERFACE "',member='PropertyChanged'",
 +            "type='signal',sender='" OFONO_SERVICE "',interface='" VOICECALL_MANAGER_INTERFACE "',member='CallAdded'",
              NULL);
  
