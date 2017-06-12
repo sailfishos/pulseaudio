@@ -48,7 +48,8 @@ typedef enum profile {
     PA_BLUETOOTH_PROFILE_A2DP_SOURCE,
     PA_BLUETOOTH_PROFILE_HEADSET_HEAD_UNIT,
     PA_BLUETOOTH_PROFILE_HEADSET_AUDIO_GATEWAY,
-    PA_BLUETOOTH_PROFILE_DROID_HEADSET,
+    PA_BLUETOOTH_PROFILE_DROID_HEADSET_HFP,
+    PA_BLUETOOTH_PROFILE_DROID_HEADSET_HSP,
     PA_BLUETOOTH_PROFILE_OFF
 } pa_bluetooth_profile_t;
 #define PA_BLUETOOTH_PROFILE_COUNT PA_BLUETOOTH_PROFILE_OFF
@@ -136,8 +137,8 @@ static inline pa_bluetooth_backend *pa_bluetooth_native_backend_new(pa_core *c, 
 static inline void pa_bluetooth_native_backend_free(pa_bluetooth_backend *b) {}
 #endif
 
-pa_bluetooth_backend *pa_bluetooth_droid_backend_new(pa_core *c, pa_bluetooth_discovery *y);
-void pa_bluetooth_droid_backend_free(pa_bluetooth_backend *b);
+pa_bluetooth_backend *pa_bluetooth_droid_backend_hfp_new(pa_core *c, pa_bluetooth_discovery *y);
+void pa_bluetooth_droid_backend_hfp_free(pa_bluetooth_backend *b);
 
 pa_bluetooth_transport *pa_bluetooth_transport_new(pa_bluetooth_device *d, const char *owner, const char *path,
                                                    pa_bluetooth_profile_t p, const uint8_t *config, size_t size);

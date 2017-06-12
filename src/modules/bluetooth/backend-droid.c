@@ -2,7 +2,8 @@
   This file is part of PulseAudio.
 
   Copyright 2013 João Paulo Rechi Vita
-            2016 Jolla Ltd. Contact: Juho Hämäläinen <juho.hamalainen@jolla.com>
+            2016-2017 Jolla Ltd.
+                Contact: Juho Hämäläinen <juho.hamalainen@jolla.com>
 
   PulseAudio is free software; you can redistribute it and/or modify
   it under the terms of the GNU Lesser General Public License as
@@ -374,7 +375,7 @@ static void hf_audio_agent_card_found(pa_bluetooth_backend *backend, const char 
         goto fail;
     }
 
-    card->transport = pa_bluetooth_transport_new(d, backend->ofono_bus_id, path, PA_BLUETOOTH_PROFILE_DROID_HEADSET, NULL, 0);
+    card->transport = pa_bluetooth_transport_new(d, backend->ofono_bus_id, path, PA_BLUETOOTH_PROFILE_DROID_HEADSET_HFP, NULL, 0);
     card->transport->acquire = hf_audio_agent_transport_acquire;
     card->transport->release = hf_audio_agent_transport_release;
     card->transport->userdata = card;
@@ -788,7 +789,7 @@ static DBusHandlerResult hf_audio_agent_handler(DBusConnection *c, DBusMessage *
     return DBUS_HANDLER_RESULT_HANDLED;
 }
 
-pa_bluetooth_backend *pa_bluetooth_droid_backend_new(pa_core *c, pa_bluetooth_discovery *y) {
+pa_bluetooth_backend *pa_bluetooth_droid_backend_hfp_new(pa_core *c, pa_bluetooth_discovery *y) {
     pa_bluetooth_backend *backend;
     DBusError err;
     static const DBusObjectPathVTable vtable_hf_audio_agent = {
@@ -843,7 +844,7 @@ pa_bluetooth_backend *pa_bluetooth_droid_backend_new(pa_core *c, pa_bluetooth_di
     return backend;
 }
 
-void pa_bluetooth_droid_backend_free(pa_bluetooth_backend *backend) {
+void pa_bluetooth_droid_backend_hfp_free(pa_bluetooth_backend *backend) {
     pa_assert(backend);
 
     pa_dbus_free_pending_list(&backend->pending);
