@@ -921,6 +921,8 @@ static void get_managed_objects_reply(DBusPendingCall *pending, void *userdata) 
         y->native_backend = pa_bluetooth_native_backend_new(y->core, y);
     if (!y->droid_backend_hfp && y->headset_backend == HEADSET_BACKEND_DROID)
         y->droid_backend_hfp = pa_bluetooth_droid_backend_hfp_new(y->core, y);
+    if (!y->droid_backend_hsp && y->headset_backend == HEADSET_BACKEND_DROID)
+        y->droid_backend_hsp = pa_bluetooth_droid_backend_hsp_new(y->core, y);
 
 finish:
     dbus_message_unref(r);
@@ -985,6 +987,10 @@ static DBusHandlerResult filter_cb(DBusConnection *bus, DBusMessage *m, void *us
                 if (y->droid_backend_hfp) {
                     pa_bluetooth_droid_backend_hfp_free(y->droid_backend_hfp);
                     y->droid_backend_hfp = NULL;
+                }
+                if (y->droid_backend_hsp) {
+                    pa_bluetooth_droid_backend_hsp_free(y->droid_backend_hsp);
+                    y->droid_backend_hsp = NULL;
                 }
             }
 
@@ -1687,6 +1693,8 @@ void pa_bluetooth_discovery_unref(pa_bluetooth_discovery *y) {
         pa_bluetooth_native_backend_free(y->native_backend);
     if (y->droid_backend_hfp)
         pa_bluetooth_droid_backend_hfp_free(y->droid_backend_hfp);
+    if (y->droid_backend_hsp)
+        pa_bluetooth_droid_backend_hsp_free(y->droid_backend_hsp);
 
     if (y->connection) {
 

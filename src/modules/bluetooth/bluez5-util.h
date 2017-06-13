@@ -139,6 +139,8 @@ static inline void pa_bluetooth_native_backend_free(pa_bluetooth_backend *b) {}
 
 pa_bluetooth_backend *pa_bluetooth_droid_backend_hfp_new(pa_core *c, pa_bluetooth_discovery *y);
 void pa_bluetooth_droid_backend_hfp_free(pa_bluetooth_backend *b);
+pa_bluetooth_backend *pa_bluetooth_droid_backend_hsp_new(pa_core *c, pa_bluetooth_discovery *y);
+void pa_bluetooth_droid_backend_hsp_free(pa_bluetooth_backend *b);
 
 pa_bluetooth_transport *pa_bluetooth_transport_new(pa_bluetooth_device *d, const char *owner, const char *path,
                                                    pa_bluetooth_profile_t p, const uint8_t *config, size_t size);
