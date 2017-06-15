@@ -739,7 +739,7 @@ static int transport_acquire(struct userdata *u, bool optional) {
     pa_log_debug("Acquiring transport %s", u->transport->path);
 
     u->stream_fd = u->transport->acquire(u->transport, optional, &u->read_link_mtu, &u->write_link_mtu);
-    if (u->stream_fd < 0 && u->profile != PA_BLUETOOTH_PROFILE_DROID_HEADSET)
+    if (u->stream_fd < 0 && u->profile != PA_BLUETOOTH_PROFILE_DROID_HEADSET_HFP)
         return -1;
 
     u->transport_acquired = true;
@@ -964,7 +964,8 @@ static int add_source(struct userdata *u) {
                 break;
             case PA_BLUETOOTH_PROFILE_A2DP_SINK:
             case PA_BLUETOOTH_PROFILE_HEADSET_HEAD_UNIT:
-            case PA_BLUETOOTH_PROFILE_DROID_HEADSET:
+            case PA_BLUETOOTH_PROFILE_DROID_HEADSET_HFP:
+            case PA_BLUETOOTH_PROFILE_DROID_HEADSET_HSP:
             case PA_BLUETOOTH_PROFILE_OFF:
                 pa_assert_not_reached();
                 break;
@@ -1123,7 +1124,8 @@ static int add_sink(struct userdata *u) {
                 /* Profile switch should have failed */
             case PA_BLUETOOTH_PROFILE_A2DP_SOURCE:
             case PA_BLUETOOTH_PROFILE_HEADSET_HEAD_UNIT:
-            case PA_BLUETOOTH_PROFILE_DROID_HEADSET:
+            case PA_BLUETOOTH_PROFILE_DROID_HEADSET_HFP:
+            case PA_BLUETOOTH_PROFILE_DROID_HEADSET_HSP:
             case PA_BLUETOOTH_PROFILE_OFF:
                 pa_assert_not_reached();
                 break;
@@ -1152,7 +1154,8 @@ static void transport_config(struct userdata *u) {
         u->sample_spec.format = PA_SAMPLE_S16LE;
         u->sample_spec.channels = 1;
         u->sample_spec.rate = 8000;
-    } else if (u->profile != PA_BLUETOOTH_PROFILE_DROID_HEADSET) {
+    } else if (u->profile != PA_BLUETOOTH_PROFILE_DROID_HEADSET_HFP &&
+               u->profile != PA_BLUETOOTH_PROFILE_DROID_HEADSET_HSP) {
         sbc_info_t *sbc_info = &u->sbc_info;
         a2dp_sbc_t *config;
 
@@ -1295,7 +1298,8 @@ static pa_direction_t get_profile_direction(pa_bluetooth_profile_t p) {
         [PA_BLUETOOTH_PROFILE_A2DP_SOURCE] = PA_DIRECTION_INPUT,
         [PA_BLUETOOTH_PROFILE_HEADSET_HEAD_UNIT] = PA_DIRECTION_INPUT | PA_DIRECTION_OUTPUT,
         [PA_BLUETOOTH_PROFILE_HEADSET_AUDIO_GATEWAY] = PA_DIRECTION_INPUT | PA_DIRECTION_OUTPUT,
-        [PA_BLUETOOTH_PROFILE_DROID_HEADSET] = 0,
+        [PA_BLUETOOTH_PROFILE_DROID_HEADSET_HFP] = 0,
+        [PA_BLUETOOTH_PROFILE_DROID_HEADSET_HSP] = 0,
         [PA_BLUETOOTH_PROFILE_OFF] = 0
     };
 
@@ -1885,6 +1889,25 @@ off:
     return -PA_ERR_IO;
 }
 
+static void add_droid_card_profile(struct userdata *u, pa_hashmap *profiles, pa_bluetooth_profile_t profile, const char *descr) {
+    pa_card_profile *cp;
+    pa_bluetooth_profile_t *p;
+
+    pa_assert(u);
+    pa_assert(profiles);
+    pa_assert(descr);
+
+    cp = pa_card_profile_new(pa_bluetooth_profile_to_string(profile), descr, sizeof(pa_bluetooth_profile_t));
+    if (u->device->transports[profile])
+        cp->available = transport_state_to_availability(u->device->transports[profile]->state);
+    else
+        cp->available = PA_AVAILABLE_NO;
+    cp->priority = 5;
+    p = PA_CARD_PROFILE_DATA(cp);
+    *p = profile;
+    pa_hashmap_put(profiles, cp->name, cp);
+}
+
 /* Run from main thread */
 static int add_card(struct userdata *u) {
     const pa_bluetooth_device *d;
@@ -1939,15 +1962,8 @@ static int add_card(struct userdata *u) {
         pa_hashmap_put(data.profiles, cp->name, cp);
     }
 
-    cp = pa_card_profile_new("droid_headset", _("Droid Headset (HSP/HFP)"), sizeof(pa_bluetooth_profile_t));
-    if (u->device->transports[PA_BLUETOOTH_PROFILE_DROID_HEADSET])
-        cp->available = transport_state_to_availability(u->device->transports[PA_BLUETOOTH_PROFILE_DROID_HEADSET]->state);
-    else
-        cp->available = PA_AVAILABLE_NO;
-    cp->priority = 5;
-    p = PA_CARD_PROFILE_DATA(cp);
-    *p = PA_BLUETOOTH_PROFILE_DROID_HEADSET;
-    pa_hashmap_put(data.profiles, cp->name, cp);
+    add_droid_card_profile(u, data.profiles, PA_BLUETOOTH_PROFILE_DROID_HEADSET_HFP, _("Droid Headset (HFP)"));
+    add_droid_card_profile(u, data.profiles, PA_BLUETOOTH_PROFILE_DROID_HEADSET_HSP, _("Droid Headset (HSP)"));
 
     pa_assert(!pa_hashmap_isempty(data.profiles));
 
@@ -1971,7 +1987,8 @@ static int add_card(struct userdata *u) {
     u->profile = *p;
 
     /* Never start up with droid_headset profile. */
-    if (u->profile == PA_BLUETOOTH_PROFILE_DROID_HEADSET) {
+    if (u->profile == PA_BLUETOOTH_PROFILE_DROID_HEADSET_HFP ||
+        u->profile == PA_BLUETOOTH_PROFILE_DROID_HEADSET_HSP) {
         u->card->active_profile = cp; /* off */
         p = PA_CARD_PROFILE_DATA(u->card->active_profile);
         u->profile = *p;
@@ -2085,6 +2102,10 @@ static pa_hook_result_t transport_speaker_gain_changed_cb(pa_bluetooth_discovery
     if (t != u->transport)
       return PA_HOOK_OK;
 
+    if (t->profile == PA_BLUETOOTH_PROFILE_DROID_HEADSET_HFP ||
+        t->profile == PA_BLUETOOTH_PROFILE_DROID_HEADSET_HSP)
+        return PA_HOOK_OK;
+
     gain = t->speaker_gain;
     volume = (pa_volume_t) (gain * PA_VOLUME_NORM / HSP_MAX_GAIN);
 
@@ -2108,6 +2129,10 @@ static pa_hook_result_t transport_microphone_gain_changed_cb(pa_bluetooth_discov
 
     if (t != u->transport)
       return PA_HOOK_OK;
+
+    if (t->profile == PA_BLUETOOTH_PROFILE_DROID_HEADSET_HFP ||
+        t->profile == PA_BLUETOOTH_PROFILE_DROID_HEADSET_HSP)
+        return PA_HOOK_OK;
 
     gain = t->microphone_gain;
     volume = (pa_volume_t) (gain * PA_VOLUME_NORM / HSP_MAX_GAIN);

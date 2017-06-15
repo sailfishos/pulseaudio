@@ -45,6 +45,7 @@ BuildRequires:  libtool-ltdl-devel
 BuildRequires:  fdupes
 BuildRequires:  systemd-libs
 BuildRequires:  systemd-devel
+BuildRequires:  pkgconfig(bluez) >= 4.101
 
 %description
 PulseAudio is a layer between audio devices and applications. It removes
