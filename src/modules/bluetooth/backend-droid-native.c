@@ -42,6 +42,7 @@ struct pa_bluetooth_backend {
   pa_core *core;
   pa_dbus_connection *connection;
   pa_bluetooth_discovery *discovery;
+  pa_droid_volume_control *volume_control;
 
   PA_LLIST_HEAD(pa_dbus_pending, pending);
 };
@@ -50,6 +51,7 @@ struct transport_rfcomm {
     int rfcomm_fd;
     pa_io_event *rfcomm_io;
     pa_mainloop_api *mainloop;
+    pa_bluetooth_backend *backend;
 };
 
 #define BLUEZ_SERVICE "org.bluez"
@@ -104,6 +106,7 @@ static pa_dbus_pending* send_and_add_to_pending(pa_bluetooth_backend *backend, D
 
 static int bluez5_sco_acquire_cb(pa_bluetooth_transport *t, bool optional, size_t *imtu, size_t *omtu) {
     pa_bluetooth_device *d = t->device;
+    struct transport_rfcomm *trfc = t->userdata;
     struct sockaddr_sco addr;
     int err, i;
     int sock;
@@ -155,6 +158,8 @@ static int bluez5_sco_acquire_cb(pa_bluetooth_transport *t, bool optional, size_
     if (omtu)
         *omtu = 48;
 
+    pa_droid_volume_control_acquire(trfc->backend->volume_control, t);
+
     return sock;
 
 fail_close:
@@ -163,6 +168,12 @@ fail_close:
 }
 
 static void bluez5_sco_release_cb(pa_bluetooth_transport *t) {
+    struct transport_rfcomm *trfc;
+
+    trfc = t->userdata;
+
+    pa_droid_volume_control_release(trfc->backend->volume_control);
+
     pa_log_info("Transport %s released", t->path);
     /* device will close the SCO socket for us */
 }
@@ -367,6 +378,7 @@ static DBusMessage *profile_new_connection(DBusConnection *conn, DBusMessage *m,
     trfc->mainloop = b->core->mainloop;
     trfc->rfcomm_io = trfc->mainloop->io_new(b->core->mainloop, fd, PA_IO_EVENT_INPUT|PA_IO_EVENT_HANGUP,
         rfcomm_io_callback, t);
+    trfc->backend = b;
     t->userdata =  trfc;
 
     pa_bluetooth_transport_put(t);
@@ -464,7 +476,7 @@ static void profile_done(pa_bluetooth_backend *b, pa_bluetooth_profile_t profile
     }
 }
 
-pa_bluetooth_backend *pa_bluetooth_droid_backend_hsp_new(pa_core *c, pa_bluetooth_discovery *y) {
+pa_bluetooth_backend *pa_bluetooth_droid_backend_hsp_new(pa_core *c, pa_bluetooth_discovery *y, pa_droid_volume_control *volume) {
     pa_bluetooth_backend *backend;
     DBusError err;
 
@@ -472,6 +484,7 @@ pa_bluetooth_backend *pa_bluetooth_droid_backend_hsp_new(pa_core *c, pa_bluetoot
 
     backend = pa_xnew0(pa_bluetooth_backend, 1);
     backend->core = c;
+    backend->volume_control = volume;
 
     dbus_error_init(&err);
     if (!(backend->connection = pa_dbus_bus_get(c, DBUS_BUS_SYSTEM, &err))) {

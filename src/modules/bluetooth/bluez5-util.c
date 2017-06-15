@@ -87,6 +87,7 @@ struct pa_bluetooth_discovery {
 
     int headset_backend;
     pa_bluetooth_backend *ofono_backend, *native_backend, *droid_backend_hfp, *droid_backend_hsp;
+    pa_droid_volume_control *droid_volume_control;
     PA_LLIST_HEAD(pa_dbus_pending, pending);
 };
 
@@ -919,10 +920,12 @@ static void get_managed_objects_reply(DBusPendingCall *pending, void *userdata) 
     if (!y->ofono_backend && !y->native_backend && (y->headset_backend == HEADSET_BACKEND_NATIVE ||
                                                     y->headset_backend == HEADSET_BACKEND_AUTO))
         y->native_backend = pa_bluetooth_native_backend_new(y->core, y);
+    if (!y->droid_volume_control && y->headset_backend == HEADSET_BACKEND_DROID)
+        y->droid_volume_control = pa_droid_volume_control_new(y->core, y);
     if (!y->droid_backend_hfp && y->headset_backend == HEADSET_BACKEND_DROID)
-        y->droid_backend_hfp = pa_bluetooth_droid_backend_hfp_new(y->core, y);
+        y->droid_backend_hfp = pa_bluetooth_droid_backend_hfp_new(y->core, y, y->droid_volume_control);
     if (!y->droid_backend_hsp && y->headset_backend == HEADSET_BACKEND_DROID)
-        y->droid_backend_hsp = pa_bluetooth_droid_backend_hsp_new(y->core, y);
+        y->droid_backend_hsp = pa_bluetooth_droid_backend_hsp_new(y->core, y, y->droid_volume_control);
 
 finish:
     dbus_message_unref(r);
@@ -991,6 +994,10 @@ static DBusHandlerResult filter_cb(DBusConnection *bus, DBusMessage *m, void *us
                 if (y->droid_backend_hsp) {
                     pa_bluetooth_droid_backend_hsp_free(y->droid_backend_hsp);
                     y->droid_backend_hsp = NULL;
+                }
+                if (y->droid_volume_control) {
+                    pa_droid_volume_control_free(y->droid_volume_control);
+                    y->droid_volume_control = NULL;
                 }
             }
 
@@ -1695,6 +1702,8 @@ void pa_bluetooth_discovery_unref(pa_bluetooth_discovery *y) {
         pa_bluetooth_droid_backend_hfp_free(y->droid_backend_hfp);
     if (y->droid_backend_hsp)
         pa_bluetooth_droid_backend_hsp_free(y->droid_backend_hsp);
+    if (y->droid_volume_control)
+        pa_droid_volume_control_free(y->droid_volume_control);
 
     if (y->connection) {
 

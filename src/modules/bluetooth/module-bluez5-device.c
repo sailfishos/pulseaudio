@@ -2102,6 +2102,10 @@ static pa_hook_result_t transport_speaker_gain_changed_cb(pa_bluetooth_discovery
     if (t != u->transport)
       return PA_HOOK_OK;
 
+    if (t->profile == PA_BLUETOOTH_PROFILE_DROID_HEADSET_HFP ||
+        t->profile == PA_BLUETOOTH_PROFILE_DROID_HEADSET_HSP)
+        return PA_HOOK_OK;
+
     gain = t->speaker_gain;
     volume = (pa_volume_t) (gain * PA_VOLUME_NORM / HSP_MAX_GAIN);
 
@@ -2125,6 +2129,10 @@ static pa_hook_result_t transport_microphone_gain_changed_cb(pa_bluetooth_discov
 
     if (t != u->transport)
       return PA_HOOK_OK;
+
+    if (t->profile == PA_BLUETOOTH_PROFILE_DROID_HEADSET_HFP ||
+        t->profile == PA_BLUETOOTH_PROFILE_DROID_HEADSET_HSP)
+        return PA_HOOK_OK;
 
     gain = t->microphone_gain;
     volume = (pa_volume_t) (gain * PA_VOLUME_NORM / HSP_MAX_GAIN);
