@@ -313,7 +313,8 @@ static void hf_audio_agent_transport_release(pa_bluetooth_transport *t) {
 
         pa_log_debug("Successfully released transport for card %s", card->path);
 
-        pa_bluetooth_transport_set_state(t, PA_BLUETOOTH_TRANSPORT_STATE_IDLE);
+        if (t->state > PA_BLUETOOTH_TRANSPORT_STATE_IDLE)
+            pa_bluetooth_transport_set_state(t, PA_BLUETOOTH_TRANSPORT_STATE_IDLE);
     } else
         pa_log_info("Transport %s already released", t->path);
 }
