@@ -23,11 +23,14 @@
 #include <config.h>
 #endif
 
+#include <pulsecore/core.h>
 #include <pulsecore/shared.h>
 #include <pulsecore/core-error.h>
 #include <pulsecore/core-util.h>
 #include <pulsecore/dbus-shared.h>
 #include <pulsecore/log.h>
+#include <pulse/timeval.h>
+#include <pulse/rtclock.h>
 
 #include <errno.h>
 #include <sys/types.h>
@@ -52,6 +55,7 @@ struct transport_rfcomm {
     pa_io_event *rfcomm_io;
     pa_mainloop_api *mainloop;
     pa_bluetooth_backend *backend;
+    pa_time_event *ring_time_event;
 };
 
 #define BLUEZ_SERVICE "org.bluez"
@@ -85,6 +89,11 @@ struct transport_rfcomm {
     "  </method>"                                                       \
     " </interface>"                                                     \
     "</node>"
+
+#define RING_WAIT_TIME ((pa_usec_t) (3 * PA_USEC_PER_SEC))
+
+static void rfcomm_ring_start(struct transport_rfcomm *trfc);
+static void rfcomm_ring_stop(struct transport_rfcomm *trfc);
 
 static pa_dbus_pending* send_and_add_to_pending(pa_bluetooth_backend *backend, DBusMessage *m,
         DBusPendingCallNotifyFunction func, void *call_data) {
@@ -278,6 +287,8 @@ fail:
 static void transport_destroy(pa_bluetooth_transport *t) {
     struct transport_rfcomm *trfc = t->userdata;
 
+    rfcomm_ring_stop(trfc);
+
     trfc->mainloop->io_free(trfc->rfcomm_io);
 
     shutdown(trfc->rfcomm_fd, SHUT_RDWR);
@@ -322,6 +333,50 @@ static void set_microphone_gain(pa_bluetooth_transport *t, uint16_t gain) {
 
     if (written != len)
         pa_log_error("RFCOMM write error: %s", pa_cstrerror(errno));
+}
+
+static void rfcomm_ring(struct transport_rfcomm *trfc) {
+    const char *buf = "\r\nRING\r\n";
+    const ssize_t len = strlen(buf);
+    ssize_t written;
+
+    pa_log_debug("RFCOMM >> RING");
+    written = write(trfc->rfcomm_fd, buf, len);
+
+    if (written != len)
+        pa_log_error("RFCOMM write error: %s", pa_cstrerror(errno));
+}
+
+static void ring_time_cb(pa_mainloop_api *a, pa_time_event *e, const struct timeval *t, void *userdata) {
+    struct transport_rfcomm *trfc = (struct transport_rfcomm*) userdata;
+
+    pa_assert(a);
+    pa_assert(e);
+    pa_assert(trfc);
+    pa_assert(e == trfc->ring_time_event);
+
+    rfcomm_ring(trfc);
+    pa_core_rttime_restart(trfc->backend->core, trfc->ring_time_event, pa_rtclock_now() + RING_WAIT_TIME);
+}
+
+static void rfcomm_ring_start(struct transport_rfcomm *trfc) {
+    pa_assert(trfc);
+
+    if (!trfc->ring_time_event) {
+        rfcomm_ring(trfc);
+        trfc->ring_time_event = pa_core_rttime_new(trfc->backend->core,
+                                                   pa_rtclock_now() + RING_WAIT_TIME,
+                                                   ring_time_cb, trfc);
+    }
+}
+
+static void rfcomm_ring_stop(struct transport_rfcomm *trfc) {
+    pa_assert(trfc);
+
+    if (trfc->ring_time_event) {
+        trfc->backend->core->mainloop->time_free(trfc->ring_time_event);
+        trfc->ring_time_event = NULL;
+    }
 }
 
 static DBusMessage *profile_new_connection(DBusConnection *conn, DBusMessage *m, void *userdata) {
