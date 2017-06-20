@@ -107,8 +107,6 @@ static pa_hook_result_t sink_input_volume_changed_cb(pa_core *c, pa_sink_input *
     pa_assert(control);
     pa_assert(control->transport);
 
-    pa_log("sink_input_volume_changed_cb transport profile %s", pa_bluetooth_profile_to_string(control->transport->profile));
-
     if (pa_safe_streq(pa_proplist_gets(si->proplist, PA_PROP_MEDIA_ROLE), "phone")) {
         pa_volume_t v;
         pa_volume_t gain;
@@ -150,7 +148,7 @@ void pa_droid_volume_control_acquire(pa_droid_volume_control *control, pa_blueto
 
     pa_droid_volume_control_release(control);
 
-    pa_log("volume control acquire %s", pa_bluetooth_profile_to_string(t->profile));
+    pa_log_debug("volume control acquire %s", pa_bluetooth_profile_to_string(t->profile));
     control->transport = t;
     control->sink_input_volume_changed_slot = pa_hook_connect(&control->core->hooks[PA_CORE_HOOK_SINK_INPUT_VOLUME_CHANGED],
                                                               PA_HOOK_LATE,
@@ -169,7 +167,7 @@ void pa_droid_volume_control_release(pa_droid_volume_control *control) {
     if (!control->sink_input_volume_changed_slot || !control->transport)
         return;
 
-    pa_log("volume control release %s", pa_bluetooth_profile_to_string(control->transport->profile));
+    pa_log_debug("volume control release %s", pa_bluetooth_profile_to_string(control->transport->profile));
     pa_hook_slot_free(control->sink_input_volume_changed_slot);
     control->sink_input_volume_changed_slot = NULL;
     control->transport = NULL;
