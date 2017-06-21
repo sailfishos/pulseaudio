@@ -28,6 +28,8 @@
 #include <pulsecore/core-error.h>
 #include <pulsecore/core-util.h>
 #include <pulsecore/dbus-shared.h>
+#include <pulsecore/idxset.h>
+#include <pulsecore/hashmap.h>
 #include <pulsecore/log.h>
 #include <pulse/timeval.h>
 #include <pulse/rtclock.h>
@@ -41,11 +43,18 @@
 
 #include "bluez5-util.h"
 
+struct transport_rfcomm;
+
 struct pa_bluetooth_backend {
   pa_core *core;
   pa_dbus_connection *connection;
   pa_bluetooth_discovery *discovery;
   pa_droid_volume_control *volume_control;
+  struct transport_rfcomm *trfc;
+  pa_hashmap *call_paths;
+  pa_hashmap *active_calls;
+  pa_hashmap *held_calls;
+  const char *incoming_call_path;
 
   PA_LLIST_HEAD(pa_dbus_pending, pending);
 };
@@ -90,10 +99,17 @@ struct transport_rfcomm {
     " </interface>"                                                     \
     "</node>"
 
+#define OFONO_SERVICE                       "org.ofono"
+#define OFONO_MANAGER_INTERFACE             OFONO_SERVICE ".Manager"
+#define OFONO_VOICECALL_INTERFACE           OFONO_SERVICE ".VoiceCall"
+#define OFONO_VOICECALL_MANAGER_INTERFACE   OFONO_SERVICE ".VoiceCallManager"
+
 #define RING_WAIT_TIME ((pa_usec_t) (3 * PA_USEC_PER_SEC))
 
 static void rfcomm_ring_start(struct transport_rfcomm *trfc);
 static void rfcomm_ring_stop(struct transport_rfcomm *trfc);
+static void voicecall_get_all_calls(pa_bluetooth_backend *backend);
+static void voicecall_clear_calls(pa_bluetooth_backend *backend);
 
 static pa_dbus_pending* send_and_add_to_pending(pa_bluetooth_backend *backend, DBusMessage *m,
         DBusPendingCallNotifyFunction func, void *call_data) {
@@ -111,6 +127,52 @@ static pa_dbus_pending* send_and_add_to_pending(pa_bluetooth_backend *backend, D
     dbus_pending_call_set_notify(call, func, p, NULL);
 
     return p;
+}
+
+static void voicecall_send(pa_bluetooth_backend *backend, const char *path, const char *action) {
+    DBusMessage *m;
+
+    m = dbus_message_new_method_call(OFONO_SERVICE, path, OFONO_VOICECALL_INTERFACE, action);
+    dbus_connection_send(pa_dbus_connection_get(backend->connection), m, NULL);
+}
+
+static char *path_get_modem(const char *path) {
+    char *modem;
+    char *d;
+
+    if (!path || strlen(path) < 2)
+        return NULL;
+
+    modem = pa_xstrdup(path);
+    if ((d = strstr(modem + 1, "/"))) {
+        d[0] = '\0';
+        return modem;
+    }
+
+    pa_xfree(modem);
+    return NULL;
+}
+
+static void voicecall_hold_and_answer(pa_bluetooth_backend *backend,  const char *path) {
+    DBusMessage *m;
+    char *modem;
+
+    if ((modem = path_get_modem(path))) {
+        m = dbus_message_new_method_call(OFONO_SERVICE, modem, OFONO_VOICECALL_MANAGER_INTERFACE, "HoldAndAnswer");
+        dbus_connection_send(pa_dbus_connection_get(backend->connection), m, NULL);
+        pa_xfree(modem);
+    }
+}
+
+static void voicecall_swap_calls(pa_bluetooth_backend *backend,  const char *path) {
+    DBusMessage *m;
+    char *modem;
+
+    if ((modem = path_get_modem(path))) {
+        m = dbus_message_new_method_call(OFONO_SERVICE, modem, OFONO_VOICECALL_MANAGER_INTERFACE, "SwapCalls");
+        dbus_connection_send(pa_dbus_connection_get(backend->connection), m, NULL);
+        pa_xfree(modem);
+    }
 }
 
 static int bluez5_sco_acquire_cb(pa_bluetooth_transport *t, bool optional, size_t *imtu, size_t *omtu) {
@@ -237,6 +299,28 @@ static void register_profile(pa_bluetooth_backend *b, const char *profile, const
     send_and_add_to_pending(b, m, register_profile_reply, pa_xstrdup(profile));
 }
 
+static void rfcomm_handle_button(pa_bluetooth_backend *backend) {
+    pa_assert(backend);
+
+    if (backend->incoming_call_path) {
+        if (pa_hashmap_size(backend->call_paths) == 1) {
+            pa_log_debug("answer incoming %s", backend->incoming_call_path);
+            voicecall_send(backend, backend->incoming_call_path, "Answer");
+        } else {
+            pa_log_debug("hold active calls and answer incoming %s", backend->incoming_call_path);
+            voicecall_hold_and_answer(backend, backend->incoming_call_path);
+        }
+    } else if (pa_hashmap_size(backend->active_calls)) {
+        pa_log_debug("hangup active call %s", (char *) pa_hashmap_last(backend->active_calls));
+        voicecall_send(backend, pa_hashmap_last(backend->active_calls), "Hangup");
+        if (pa_hashmap_size(backend->held_calls))
+            voicecall_swap_calls(backend, pa_hashmap_last(backend->held_calls));
+    } else if (pa_hashmap_size(backend->held_calls)) {
+        pa_log_debug("hangup held call %s", (char *) pa_hashmap_last(backend->held_calls));
+        voicecall_send(backend, pa_hashmap_last(backend->held_calls), "Hangup");
+    }
+}
+
 static void rfcomm_io_callback(pa_mainloop_api *io, pa_io_event *e, int fd, pa_io_event_flags_t events, void *userdata) {
     pa_bluetooth_transport *t = userdata;
 
@@ -264,6 +348,9 @@ static void rfcomm_io_callback(pa_mainloop_api *io, pa_io_event *e, int fd, pa_i
         } else if (sscanf(buf, "AT+VGM=%d", &gain) == 1) {
           t->microphone_gain = gain;
           pa_hook_fire(pa_bluetooth_discovery_hook(t->device->discovery, PA_BLUETOOTH_HOOK_TRANSPORT_MICROPHONE_GAIN_CHANGED), t);
+        } else if (pa_startswith(buf, "AT+CKPD=200")) {
+            struct transport_rfcomm *trfc = t->userdata;
+            rfcomm_handle_button(trfc->backend);
         }
 
         pa_log_debug("RFCOMM >> OK");
@@ -287,7 +374,9 @@ fail:
 static void transport_destroy(pa_bluetooth_transport *t) {
     struct transport_rfcomm *trfc = t->userdata;
 
+    voicecall_clear_calls(trfc->backend);
     rfcomm_ring_stop(trfc);
+    trfc->backend->trfc = NULL;
 
     trfc->mainloop->io_free(trfc->rfcomm_io);
 
@@ -434,9 +523,11 @@ static DBusMessage *profile_new_connection(DBusConnection *conn, DBusMessage *m,
     trfc->rfcomm_io = trfc->mainloop->io_new(b->core->mainloop, fd, PA_IO_EVENT_INPUT|PA_IO_EVENT_HANGUP,
         rfcomm_io_callback, t);
     trfc->backend = b;
+    b->trfc = trfc;
     t->userdata =  trfc;
 
     pa_bluetooth_transport_put(t);
+    voicecall_get_all_calls(b);
 
     pa_log_debug("Transport %s available for profile %s", t->path, pa_bluetooth_profile_to_string(t->profile));
 
@@ -495,14 +586,287 @@ static DBusHandlerResult profile_handler(DBusConnection *c, DBusMessage *m, void
     return DBUS_HANDLER_RESULT_HANDLED;
 }
 
-static void profile_init(pa_bluetooth_backend *b, pa_bluetooth_profile_t profile) {
+static void voicecall_parse_call(pa_bluetooth_backend *backend, DBusMessageIter *arg_i) {
+    DBusMessageIter array_i;
+    const char *call_state = NULL;
+    const char *path;
+    char *call_path;
+
+    pa_assert(backend);
+    pa_assert(arg_i);
+
+    pa_assert(dbus_message_iter_get_arg_type(arg_i) == DBUS_TYPE_OBJECT_PATH);
+    dbus_message_iter_get_basic(arg_i, &path);
+
+    pa_assert_se(dbus_message_iter_next(arg_i));
+    pa_assert(dbus_message_iter_get_arg_type(arg_i) == DBUS_TYPE_ARRAY);
+    dbus_message_iter_recurse(arg_i, &array_i);
+
+    while (dbus_message_iter_get_arg_type(&array_i) == DBUS_TYPE_DICT_ENTRY) {
+        DBusMessageIter dict_i;
+        const char *entry;
+
+        dbus_message_iter_recurse(&array_i, &dict_i);
+        pa_assert(dbus_message_iter_get_arg_type(&dict_i) == DBUS_TYPE_STRING);
+        dbus_message_iter_get_basic(&dict_i, &entry);
+
+        if (pa_streq(entry, "State")) {
+            DBusMessageIter value_i;
+            pa_assert_se(dbus_message_iter_next(&dict_i));
+            pa_assert(dbus_message_iter_get_arg_type(&dict_i) == DBUS_TYPE_VARIANT);
+            dbus_message_iter_recurse(&dict_i, &value_i);
+            dbus_message_iter_get_basic(&value_i, &call_state);
+            break;
+        }
+
+        dbus_message_iter_next(&array_i);
+    }
+
+    pa_log_debug("new call %s: %s", path, call_state ? call_state : "<none>");
+
+    call_path = pa_xstrdup(path);
+    if (pa_hashmap_put(backend->call_paths, call_path, call_path)) {
+        pa_xfree(call_path);
+        call_path = pa_hashmap_get(backend->call_paths, path);
+    }
+
+    if (call_state && (pa_streq(call_state, "incoming") || pa_streq(call_state, "waiting"))) {
+        backend->incoming_call_path = call_path;
+        if (pa_hashmap_size(backend->call_paths) == 1)
+            rfcomm_ring_start(backend->trfc);
+    } else {
+        pa_hashmap_remove(backend->active_calls, call_path);
+        pa_hashmap_put(backend->active_calls, call_path, call_path);
+    }
+}
+
+static void get_calls_reply(DBusPendingCall *pending, void *userdata) {
+    DBusMessage *r;
+    pa_dbus_pending *p;
+    pa_bluetooth_backend *backend;
+    DBusMessageIter arg_i, array_i, struct_i;
+
+    pa_assert(pending);
+    pa_assert_se(p = userdata);
+    pa_assert_se(backend = p->context_data);
+    pa_assert_se(r = dbus_pending_call_steal_reply(pending));
+
+    if (!dbus_message_iter_init(r, &arg_i) || !pa_streq(dbus_message_get_signature(r), "a(oa{sv})")) {
+        pa_log_error("Failed to parse " OFONO_VOICECALL_MANAGER_INTERFACE ".GetCalls");
+        goto finish;
+    }
+
+    pa_assert(dbus_message_iter_get_arg_type(&arg_i) == DBUS_TYPE_ARRAY);
+    dbus_message_iter_recurse(&arg_i, &array_i);
+
+    while (dbus_message_iter_get_arg_type(&array_i) == DBUS_TYPE_STRUCT) {
+        dbus_message_iter_recurse(&array_i, &struct_i);
+        pa_assert(dbus_message_iter_get_arg_type(&struct_i) == DBUS_TYPE_OBJECT_PATH);
+        voicecall_parse_call(backend, &struct_i);
+        dbus_message_iter_next(&array_i);
+    }
+
+finish:
+    dbus_message_unref(r);
+
+    PA_LLIST_REMOVE(pa_dbus_pending, backend->pending, p);
+    pa_dbus_pending_free(p);
+}
+
+static void voicecall_get_calls(pa_bluetooth_backend *backend, const char *modem_path) {
+    DBusMessage *m;
+
+    pa_assert(backend);
+    pa_assert_se(m = dbus_message_new_method_call(OFONO_SERVICE, modem_path, OFONO_VOICECALL_MANAGER_INTERFACE, "GetCalls"));
+    send_and_add_to_pending(backend, m, get_calls_reply, NULL);
+}
+
+static void get_modems_reply(DBusPendingCall *pending, void *userdata) {
+    DBusMessage *r;
+    pa_dbus_pending *p;
+    pa_bluetooth_backend *backend;
+    DBusMessageIter arg_i, array_i, struct_i;
+
+    pa_assert(pending);
+    pa_assert_se(p = userdata);
+    pa_assert_se(backend = p->context_data);
+    pa_assert_se(r = dbus_pending_call_steal_reply(pending));
+
+    if (dbus_message_get_type(r) == DBUS_MESSAGE_TYPE_ERROR) {
+        pa_log_error(OFONO_MANAGER_INTERFACE ".GetModems() failed: %s: %s", dbus_message_get_error_name(r),
+                     pa_dbus_get_error_message(r));
+        goto finish;
+    }
+
+    if (!dbus_message_iter_init(r, &arg_i) || !pa_streq(dbus_message_get_signature(r), "a(oa{sv})")) {
+        pa_log_error("Failed to parse " OFONO_MANAGER_INTERFACE ".GetModems");
+        goto finish;
+    }
+
+    pa_assert(dbus_message_iter_get_arg_type(&arg_i) == DBUS_TYPE_ARRAY);
+    dbus_message_iter_recurse(&arg_i, &array_i);
+
+    while (dbus_message_iter_get_arg_type(&array_i) == DBUS_TYPE_STRUCT) {
+        const char *modem_path;
+        dbus_message_iter_recurse(&array_i, &struct_i);
+        pa_assert(dbus_message_iter_get_arg_type(&struct_i) == DBUS_TYPE_OBJECT_PATH);
+        dbus_message_iter_get_basic(&struct_i, &modem_path);
+        voicecall_get_calls(backend, modem_path);
+        dbus_message_iter_next(&array_i);
+    }
+
+finish:
+    dbus_message_unref(r);
+
+    PA_LLIST_REMOVE(pa_dbus_pending, backend->pending, p);
+    pa_dbus_pending_free(p);
+}
+
+static void voicecall_get_all_calls(pa_bluetooth_backend *backend) {
+    DBusMessage *m;
+
+    pa_assert(backend);
+    pa_assert_se(m = dbus_message_new_method_call(OFONO_SERVICE, "/", OFONO_MANAGER_INTERFACE, "GetModems"));
+    send_and_add_to_pending(backend, m, get_modems_reply, NULL);
+}
+
+static void voicecall_clear_calls(pa_bluetooth_backend *backend) {
+    pa_assert(backend);
+
+    pa_hashmap_remove_all(backend->active_calls);
+    pa_hashmap_remove_all(backend->held_calls);
+    pa_hashmap_remove_all(backend->call_paths);
+    backend->incoming_call_path = NULL;
+}
+
+static DBusHandlerResult filter_cb(DBusConnection *bus, DBusMessage *m, void *data) {
+    DBusError err;
+    pa_bluetooth_backend *backend = data;
+
+    pa_assert(bus);
+    pa_assert(m);
+    pa_assert(backend);
+
+    if (!backend->trfc)
+        return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+
+    dbus_error_init(&err);
+
+    if (dbus_message_is_signal(m, "org.freedesktop.DBus", "NameOwnerChanged")) {
+        const char *name, *old_owner, *new_owner;
+
+        if (!dbus_message_get_args(m, &err,
+                                   DBUS_TYPE_STRING, &name,
+                                   DBUS_TYPE_STRING, &old_owner,
+                                   DBUS_TYPE_STRING, &new_owner,
+                                   DBUS_TYPE_INVALID)) {
+            pa_log_error("Failed to parse org.freedesktop.DBus.NameOwnerChanged: %s", err.message);
+            goto fail;
+        }
+
+        if (pa_streq(name, OFONO_SERVICE)) {
+
+            if (old_owner && *old_owner) {
+                pa_log_debug("oFono disappeared");
+                voicecall_clear_calls(backend);
+            }
+
+            if (new_owner && *new_owner) {
+                pa_log_debug("oFono appeared");
+            }
+        }
+
+    } else if (dbus_message_is_signal(m, OFONO_VOICECALL_INTERFACE, "PropertyChanged")) {
+        const char *path;
+        const char *property;
+        const char *state;
+        DBusMessageIter arg_i, var_i;
+
+        if (!dbus_message_iter_init(m, &arg_i) || !pa_streq(dbus_message_get_signature(m), "sv")) {
+            pa_log_error("Failed to parse " OFONO_VOICECALL_INTERFACE ".PropertyChanged");
+            goto fail;
+        }
+
+        path = dbus_message_get_path(m);
+        dbus_message_iter_get_basic(&arg_i, &property);
+
+        pa_assert_se(dbus_message_iter_next(&arg_i));
+        pa_assert(dbus_message_iter_get_arg_type(&arg_i) == DBUS_TYPE_VARIANT);
+
+        if (pa_streq(property, "State")) {
+            dbus_message_iter_recurse(&arg_i, &var_i);
+            pa_assert(dbus_message_iter_get_arg_type(&var_i) == DBUS_TYPE_STRING);
+            dbus_message_iter_get_basic(&var_i, &state);
+            pa_log_debug("PropertyChanged %s: %s %s", path, property, state);
+            if (pa_streq(state, "active")) {
+                char *p;
+                if (pa_safe_streq(backend->incoming_call_path, path))
+                    backend->incoming_call_path = NULL;
+                pa_hashmap_remove(backend->held_calls, path);
+                pa_hashmap_remove(backend->active_calls, path);
+                if ((p = pa_hashmap_get(backend->call_paths, path)))
+                    pa_hashmap_put(backend->active_calls, p, p);
+            } else if (pa_streq(state, "held")) {
+                char *p;
+                pa_hashmap_remove(backend->active_calls, path);
+                if ((p = pa_hashmap_get(backend->call_paths, path)))
+                    pa_hashmap_put(backend->held_calls, p, p);
+            } else if (pa_streq(state, "disconnected")) {
+                if (pa_safe_streq(backend->incoming_call_path, path))
+                    backend->incoming_call_path = NULL;
+                pa_hashmap_remove(backend->active_calls, path);
+                pa_hashmap_remove(backend->held_calls, path);
+                pa_hashmap_remove(backend->call_paths, path);
+            }
+            if (backend->trfc)
+                rfcomm_ring_stop(backend->trfc);
+        }
+
+    } else if (dbus_message_is_signal(m, OFONO_VOICECALL_MANAGER_INTERFACE, "CallAdded")) {
+        DBusMessageIter arg_i;
+
+        if (!dbus_message_iter_init(m, &arg_i) || !pa_streq(dbus_message_get_signature(m), "oa{sv}")) {
+            pa_log_error("Failed to parse " OFONO_VOICECALL_MANAGER_INTERFACE ".CallAdded");
+            goto fail;
+        }
+
+        pa_assert(dbus_message_iter_get_arg_type(&arg_i) == DBUS_TYPE_OBJECT_PATH);
+        voicecall_parse_call(backend, &arg_i);
+    }
+
+fail:
+    dbus_error_free(&err);
+    return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+}
+
+static bool profile_init(pa_bluetooth_backend *b, pa_bluetooth_profile_t profile) {
     static const DBusObjectPathVTable vtable_profile = {
         .message_function = profile_handler,
     };
     const char *object_name;
     const char *uuid;
+    DBusError err;
 
     pa_assert(b);
+
+    dbus_error_init(&err);
+
+    if (!dbus_connection_add_filter(pa_dbus_connection_get(b->connection), filter_cb, b, NULL)) {
+        pa_log_error("Failed to add HSP filter function");
+        return false;
+    }
+
+    if (pa_dbus_add_matches(pa_dbus_connection_get(b->connection), &err,
+            "type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',"
+            "arg0='" OFONO_SERVICE "'",
+            "type='signal',sender='" OFONO_SERVICE "',interface='" OFONO_VOICECALL_INTERFACE "',member='PropertyChanged'",
+            "type='signal',sender='" OFONO_SERVICE "',interface='" OFONO_VOICECALL_MANAGER_INTERFACE "',member='CallAdded'",
+            NULL) < 0) {
+        pa_log("Failed to add HSP oFono D-Bus matches: %s", err.message);
+        dbus_connection_remove_filter(pa_dbus_connection_get(b->connection), filter_cb, b);
+        dbus_error_free(&err);
+        return false;
+    }
 
     switch (profile) {
         case PA_BLUETOOTH_PROFILE_DROID_HEADSET_HSP:
@@ -516,10 +880,20 @@ static void profile_init(pa_bluetooth_backend *b, pa_bluetooth_profile_t profile
 
     pa_assert_se(dbus_connection_register_object_path(pa_dbus_connection_get(b->connection), object_name, &vtable_profile, b));
     register_profile(b, object_name, uuid);
+
+    return true;
 }
 
 static void profile_done(pa_bluetooth_backend *b, pa_bluetooth_profile_t profile) {
     pa_assert(b);
+
+    pa_dbus_remove_matches(pa_dbus_connection_get(b->connection),
+            "type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',"
+            "arg0='" OFONO_SERVICE "'",
+            "type='signal',sender='" OFONO_SERVICE "',interface='" OFONO_VOICECALL_INTERFACE "',member='PropertyChanged'",
+            "type='signal',sender='" OFONO_SERVICE "',interface='" OFONO_VOICECALL_MANAGER_INTERFACE "',member='CallAdded'",
+            NULL);
+    dbus_connection_remove_filter(pa_dbus_connection_get(b->connection), filter_cb, b);
 
     switch (profile) {
         case PA_BLUETOOTH_PROFILE_DROID_HEADSET_HSP:
@@ -540,6 +914,18 @@ pa_bluetooth_backend *pa_bluetooth_droid_backend_hsp_new(pa_core *c, pa_bluetoot
     backend = pa_xnew0(pa_bluetooth_backend, 1);
     backend->core = c;
     backend->volume_control = volume;
+    backend->call_paths = pa_hashmap_new_full(pa_idxset_string_hash_func,
+                                              pa_idxset_string_compare_func,
+                                              pa_xfree,
+                                              NULL);
+    backend->active_calls = pa_hashmap_new_full(pa_idxset_string_hash_func,
+                                                pa_idxset_string_compare_func,
+                                                NULL,
+                                                NULL);
+    backend->held_calls = pa_hashmap_new_full(pa_idxset_string_hash_func,
+                                              pa_idxset_string_compare_func,
+                                              NULL,
+                                              NULL);
 
     dbus_error_init(&err);
     if (!(backend->connection = pa_dbus_bus_get(c, DBUS_BUS_SYSTEM, &err))) {
@@ -551,13 +937,21 @@ pa_bluetooth_backend *pa_bluetooth_droid_backend_hsp_new(pa_core *c, pa_bluetoot
 
     backend->discovery = y;
 
-    profile_init(backend, PA_BLUETOOTH_PROFILE_DROID_HEADSET_HSP);
+    if (!profile_init(backend, PA_BLUETOOTH_PROFILE_DROID_HEADSET_HSP)) {
+        pa_dbus_connection_unref(backend->connection);
+        pa_xfree(backend);
+        return NULL;
+    }
 
     return backend;
 }
 
 void pa_bluetooth_droid_backend_hsp_free(pa_bluetooth_backend *backend) {
     pa_assert(backend);
+
+    pa_hashmap_free(backend->active_calls);
+    pa_hashmap_free(backend->held_calls);
+    pa_hashmap_free(backend->call_paths);
 
     pa_dbus_free_pending_list(&backend->pending);
 
