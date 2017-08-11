@@ -132,7 +132,8 @@ static pa_hook_result_t sink_input_volume_changed_cb(pa_core *c, pa_sink_input *
                 break;
 
             default:
-                pa_assert_not_reached();
+                pa_log_debug("droid hsp/hfp not up, ignoring.");
+                break;
         }
     }
 
