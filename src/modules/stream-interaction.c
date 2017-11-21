@@ -98,7 +98,7 @@ static const char *find_trigger_stream(struct userdata *u, pa_sink *s, pa_sink_i
             continue;
 
         trigger_role = get_trigger_role(u, j, g);
-        if (trigger_role && !j->muted && pa_sink_input_get_state(j) != PA_SINK_INPUT_CORKED)
+        if (trigger_role && !j->muted && (u->duck || pa_sink_input_get_state(j) != PA_SINK_INPUT_CORKED))
             return trigger_role;
     }
 
