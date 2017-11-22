@@ -1298,8 +1298,8 @@ static pa_direction_t get_profile_direction(pa_bluetooth_profile_t p) {
         [PA_BLUETOOTH_PROFILE_A2DP_SOURCE] = PA_DIRECTION_INPUT,
         [PA_BLUETOOTH_PROFILE_HEADSET_HEAD_UNIT] = PA_DIRECTION_INPUT | PA_DIRECTION_OUTPUT,
         [PA_BLUETOOTH_PROFILE_HEADSET_AUDIO_GATEWAY] = PA_DIRECTION_INPUT | PA_DIRECTION_OUTPUT,
-        [PA_BLUETOOTH_PROFILE_DROID_HEADSET_HFP] = 0,
-        [PA_BLUETOOTH_PROFILE_DROID_HEADSET_HSP] = 0,
+        [PA_BLUETOOTH_PROFILE_DROID_HEADSET_HFP] = PA_DIRECTION_INPUT | PA_DIRECTION_OUTPUT,
+        [PA_BLUETOOTH_PROFILE_DROID_HEADSET_HSP] = PA_DIRECTION_INPUT | PA_DIRECTION_OUTPUT,
         [PA_BLUETOOTH_PROFILE_OFF] = 0
     };
 
@@ -1312,10 +1312,19 @@ static int init_profile(struct userdata *u) {
     pa_assert(u);
     pa_assert(u->profile != PA_BLUETOOTH_PROFILE_OFF);
 
-    if (setup_transport(u) < 0)
-        return -1;
+    if ((r = setup_transport(u)) < 0)
+        goto done;
 
     pa_assert(u->transport);
+
+    /* droid headset profiles don't have sink or source,
+     * as the reading and writing to headset is done through
+     * droid.sink and droid.source with sco ports enabled.
+     * this module is used only for setting up the transport.
+     */
+    if (u->profile == PA_BLUETOOTH_PROFILE_DROID_HEADSET_HFP ||
+        u->profile == PA_BLUETOOTH_PROFILE_DROID_HEADSET_HSP)
+        goto done;
 
     if (get_profile_direction (u->profile) & PA_DIRECTION_OUTPUT)
         if (add_sink(u) < 0)
@@ -1325,6 +1334,7 @@ static int init_profile(struct userdata *u) {
         if (add_source(u) < 0)
             r = -1;
 
+done:
     return r;
 }
 
