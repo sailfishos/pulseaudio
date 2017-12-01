@@ -259,7 +259,7 @@ pa_source* pa_source_new(
         s->alternate_sample_rate = s->core->alternate_sample_rate;
 
     if (s->sample_spec.rate == s->alternate_sample_rate) {
-        pa_log_warn("Default and alternate sample rates are the same.");
+        pa_log_debug("Default and alternate sample rates are the same.");
         s->alternate_sample_rate = 0;
     }
 
