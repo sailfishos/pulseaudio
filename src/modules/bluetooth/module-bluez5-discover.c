@@ -142,6 +142,8 @@ int pa__init(pa_module *m) {
         headset_backend = HEADSET_BACKEND_NATIVE;
     else if (pa_streq(headset_str, "auto"))
         headset_backend = HEADSET_BACKEND_AUTO;
+    else if (pa_streq(headset_str, "droid"))
+        headset_backend = HEADSET_BACKEND_DROID;
     else {
         pa_log("headset parameter must be either ofono, native or auto (found %s)", headset_str);
         goto fail;
