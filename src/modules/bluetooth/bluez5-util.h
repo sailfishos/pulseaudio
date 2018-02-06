@@ -205,6 +205,8 @@ static inline void pa_bluetooth_native_backend_enable_shared_profiles(pa_bluetoo
 pa_bluetooth_profile_status_t profile_status_get(pa_bluetooth_discovery *y, pa_bluetooth_profile_t profile);
 void profile_status_set(pa_bluetooth_discovery *y, pa_bluetooth_profile_t profile, pa_bluetooth_profile_status_t status);
 
+bool pa_bluetooth_droid_backend(pa_bluetooth_discovery *y);
+
 pa_bluetooth_transport *pa_bluetooth_transport_new(pa_bluetooth_device *d, const char *owner, const char *path,
                                                    pa_bluetooth_profile_t p, const uint8_t *config, size_t size);
 
@@ -239,6 +241,7 @@ static inline bool pa_bluetooth_uuid_is_hsp_hs(const char *uuid) {
 #define HEADSET_BACKEND_OFONO 0
 #define HEADSET_BACKEND_NATIVE 1
 #define HEADSET_BACKEND_AUTO 2
+#define HEADSET_BACKEND_DROID 3
 
 pa_bluetooth_discovery* pa_bluetooth_discovery_get(pa_core *core, int headset_backend, bool enable_native_hsp_hs, bool enable_native_hfp_hf, bool enable_msbc);
 pa_bluetooth_discovery* pa_bluetooth_discovery_ref(pa_bluetooth_discovery *y);
