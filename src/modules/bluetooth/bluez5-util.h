@@ -140,6 +140,8 @@ static inline void pa_bluetooth_native_backend_free(pa_bluetooth_backend *b) {}
 static inline void pa_bluetooth_native_backend_enable_hs_role(pa_bluetooth_backend *b, bool enable_hs_role) {}
 #endif
 
+bool pa_bluetooth_droid_backend(pa_bluetooth_discovery *y);
+
 pa_bluetooth_transport *pa_bluetooth_transport_new(pa_bluetooth_device *d, const char *owner, const char *path,
                                                    pa_bluetooth_profile_t p, const uint8_t *config, size_t size);
 
@@ -160,6 +162,7 @@ const char *pa_bluetooth_profile_to_string(pa_bluetooth_profile_t profile);
 #define HEADSET_BACKEND_OFONO 0
 #define HEADSET_BACKEND_NATIVE 1
 #define HEADSET_BACKEND_AUTO 2
+#define HEADSET_BACKEND_DROID 3
 
 pa_bluetooth_discovery* pa_bluetooth_discovery_get(pa_core *core, int headset_backend);
 pa_bluetooth_discovery* pa_bluetooth_discovery_ref(pa_bluetooth_discovery *y);
