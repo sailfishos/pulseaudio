@@ -92,7 +92,14 @@ struct pa_bluetooth_discovery {
     int headset_backend;
     pa_bluetooth_backend *ofono_backend, *native_backend;
     PA_LLIST_HEAD(pa_dbus_pending, pending);
+
+    bool droid_backend;
 };
+
+bool pa_bluetooth_droid_backend(pa_bluetooth_discovery *y) {
+    pa_assert(y);
+    return y->droid_backend;
+}
 
 static pa_dbus_pending* send_and_add_to_pending(pa_bluetooth_discovery *y, DBusMessage *m,
                                                                   DBusPendingCallNotifyFunction func, void *call_data) {
@@ -1752,7 +1759,11 @@ pa_bluetooth_discovery* pa_bluetooth_discovery_get(pa_core *c, int headset_backe
     y = pa_xnew0(pa_bluetooth_discovery, 1);
     PA_REFCNT_INIT(y);
     y->core = c;
-    y->headset_backend = headset_backend;
+    if (headset_backend == HEADSET_BACKEND_DROID) {
+        y->headset_backend = HEADSET_BACKEND_AUTO;
+        y->droid_backend = true;
+    } else
+        y->headset_backend = headset_backend;
     y->adapters = pa_hashmap_new_full(pa_idxset_string_hash_func, pa_idxset_string_compare_func, NULL,
                                       (pa_free_cb_t) adapter_free);
     y->devices = pa_hashmap_new_full(pa_idxset_string_hash_func, pa_idxset_string_compare_func, NULL,
