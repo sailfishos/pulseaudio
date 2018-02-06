@@ -1426,6 +1426,16 @@ static int init_profile(struct userdata *u) {
 
     pa_assert(u->transport);
 
+    /* droid headset profiles don't have sink or source,
+     * as the reading and writing to headset is done through
+     * droid.sink and droid.source with sco ports enabled.
+     * this module is used only for setting up the transport.
+     */
+    if (u->profile != PA_BLUETOOTH_PROFILE_A2DP_SINK &&
+        u->profile != PA_BLUETOOTH_PROFILE_A2DP_SOURCE &&
+        pa_bluetooth_droid_backend(u->discovery))
+        return r;
+
     if ((get_profile_direction(u->profile) & PA_DIRECTION_OUTPUT) || u->bt_codec->support_backchannel)
         if (add_sink(u) < 0)
             r = -1;
@@ -2309,7 +2319,17 @@ static int add_card(struct userdata *u) {
 
     u->card->userdata = u;
     u->card->set_profile = set_profile_cb;
-    pa_card_choose_initial_profile(u->card);
+    /* SFOS specific change:
+     * Instead of calling now
+     * pa_card_choose_initial_profile(u->card);
+     * we just set active profile to Off.
+     * When policy framework sees this new card
+     * it will then choose proper profile based
+     * on current system state.
+     */
+    u->card->active_profile = cp; /* off */
+    u->card->save_profile = false;
+    pa_hook_fire(&u->card->core->hooks[PA_CORE_HOOK_CARD_CHOOSE_INITIAL_PROFILE], u->card);
     pa_card_put(u->card);
 
     p = PA_CARD_PROFILE_DATA(u->card->active_profile);
@@ -2458,6 +2478,9 @@ static pa_hook_result_t transport_sink_volume_changed_cb(pa_bluetooth_discovery 
     if (t != u->transport)
       return PA_HOOK_OK;
 
+    if (pa_bluetooth_droid_backend(y))
+        return PA_HOOK_OK;
+
     volume = t->sink_volume;
 
     if (!u->sink) {
@@ -2485,6 +2508,9 @@ static pa_hook_result_t transport_source_volume_changed_cb(pa_bluetooth_discover
 
     if (t != u->transport)
       return PA_HOOK_OK;
+
+    if (pa_bluetooth_droid_backend(y))
+        return PA_HOOK_OK;
 
     volume = t->source_volume;
 
