@@ -2324,6 +2324,10 @@ libbluez5_util_la_SOURCES += \
 		modules/bluetooth/backend-native.c
 endif
 
+libbluez5_util_la_SOURCES += \
+		modules/bluetooth/droid-volume.c \
+		modules/bluetooth/droid-volume.h
+
 libbluez5_util_la_LDFLAGS = -avoid-version
 libbluez5_util_la_LIBADD = $(MODULE_LIBADD) $(DBUS_LIBS)
 libbluez5_util_la_CFLAGS = $(AM_CFLAGS) $(DBUS_CFLAGS)
