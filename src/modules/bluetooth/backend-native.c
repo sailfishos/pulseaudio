@@ -398,6 +398,8 @@ static int sco_acquire_cb(pa_bluetooth_transport *t, bool optional, size_t *imtu
         }
     }
 
+    pa_bluetooth_droid_volume_control_acquire(t->device->discovery, t);
+
     return sock;
 
 fail:
@@ -405,6 +407,8 @@ fail:
 }
 
 static void sco_release_cb(pa_bluetooth_transport *t) {
+    pa_bluetooth_droid_volume_control_release(t->device->discovery);
+
     pa_log_info("Transport %s released", t->path);
     /* device will close the SCO socket for us */
 }
@@ -1019,6 +1023,8 @@ fail:
 
 static void transport_destroy(pa_bluetooth_transport *t) {
     struct transport_data *trd = t->userdata;
+
+    pa_bluetooth_droid_volume_control_release(t->device->discovery);
 
     if (trd->sco_io) {
         trd->mainloop->io_free(trd->sco_io);
