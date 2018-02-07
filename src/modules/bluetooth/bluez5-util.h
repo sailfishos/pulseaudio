@@ -206,6 +206,8 @@ pa_bluetooth_profile_status_t profile_status_get(pa_bluetooth_discovery *y, pa_b
 void profile_status_set(pa_bluetooth_discovery *y, pa_bluetooth_profile_t profile, pa_bluetooth_profile_status_t status);
 
 bool pa_bluetooth_droid_backend(pa_bluetooth_discovery *y);
+void pa_bluetooth_droid_volume_control_acquire(pa_bluetooth_discovery *y, pa_bluetooth_transport *t);
+void pa_bluetooth_droid_volume_control_release(pa_bluetooth_discovery *y);
 
 pa_bluetooth_transport *pa_bluetooth_transport_new(pa_bluetooth_device *d, const char *owner, const char *path,
                                                    pa_bluetooth_profile_t p, const uint8_t *config, size_t size);
