@@ -195,6 +195,7 @@ static int card_acquire(struct hf_audio_card *card) {
         }
         card->transport->codec = codec;
         card->fd = fd;
+        pa_bluetooth_droid_volume_control_acquire(card->backend->discovery, card->transport);
         return 0;
     }
 
@@ -232,6 +233,7 @@ static void hf_audio_card_free(struct hf_audio_card *card) {
     pa_assert(card);
 
     cancel_deferred_event(card);
+    pa_bluetooth_droid_volume_control_release(card->backend->discovery);
 
     if (card->device_unlink_slot)
         pa_hook_slot_free(card->device_unlink_slot);
@@ -351,6 +353,7 @@ static void hf_audio_agent_transport_release(pa_bluetooth_transport *t) {
     pa_assert(card);
 
     cancel_deferred_event(card);
+    pa_bluetooth_droid_volume_control_release(card->backend->discovery);
 
     if (card->fd < 0) {
         pa_log_info("Transport %s already released", t->path);
@@ -717,6 +720,8 @@ static DBusMessage *hf_audio_agent_new_connection(DBusConnection *c, DBusMessage
     card->transport->codec = codec;
 
     pa_bluetooth_transport_set_state(card->transport, PA_BLUETOOTH_TRANSPORT_STATE_PLAYING);
+
+    pa_bluetooth_droid_volume_control_acquire(backend->discovery, card->transport);
 
     pa_assert_se(r = dbus_message_new_method_return(m));
 
