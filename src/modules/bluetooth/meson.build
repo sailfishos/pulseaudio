@@ -4,6 +4,7 @@ libbluez5_util_sources = [
   'bluez5-util.c',
   'bt-codec-cvsd.c',
   'bt-codec-msbc.c',
+  'droid-volume.c',
 ]
 
 libbluez5_util_headers = [
@@ -11,6 +12,7 @@ libbluez5_util_headers = [
   'a2dp-codecs.h',
   'a2dp-codec-util.h',
   'bluez5-util.h',
+  'droid-volume.h',
   'rtp.h',
 ]
 
