@@ -42,6 +42,7 @@
 #include "a2dp-codecs.h"
 
 #include "bluez5-util.h"
+#include "droid-volume.h"
 
 #define WAIT_FOR_PROFILES_TIMEOUT_USEC (3 * PA_USEC_PER_SEC)
 
@@ -150,11 +151,27 @@ struct pa_bluetooth_discovery {
     bool enable_msbc;
 
     bool droid_backend;
+    pa_droid_volume_control *droid_volume;
 };
 
 bool pa_bluetooth_droid_backend(pa_bluetooth_discovery *y) {
     pa_assert(y);
     return y->droid_backend;
+}
+
+void pa_bluetooth_droid_volume_control_acquire(pa_bluetooth_discovery *y, pa_bluetooth_transport *t) {
+    pa_assert(y);
+    pa_assert(t);
+
+    if (y->droid_backend && y->droid_volume)
+        pa_droid_volume_control_acquire(y->droid_volume, t);
+}
+
+void pa_bluetooth_droid_volume_control_release(pa_bluetooth_discovery *y) {
+    pa_assert(y);
+
+    if (y->droid_backend && y->droid_volume)
+        pa_droid_volume_control_release(y->droid_volume);
 }
 
 static pa_dbus_pending* send_and_add_to_pending(pa_bluetooth_discovery *y, DBusMessage *m,
@@ -2913,6 +2930,9 @@ pa_bluetooth_discovery* pa_bluetooth_discovery_get(pa_core *c, int headset_backe
     for (i = 0; i < PA_BLUETOOTH_HOOK_MAX; i++)
         pa_hook_init(&y->hooks[i], y);
 
+    if (y->droid_backend)
+        y->droid_volume = pa_droid_volume_control_new(c, &y->hooks[PA_BLUETOOTH_HOOK_TRANSPORT_SINK_VOLUME_CHANGED]);
+
     pa_shared_set(c, "bluetooth-discovery", y);
 
     dbus_error_init(&err);
@@ -3002,6 +3022,8 @@ void pa_bluetooth_discovery_unref(pa_bluetooth_discovery *y) {
 
     pa_dbus_free_pending_list(&y->pending);
 
+    if (y->droid_volume)
+        pa_droid_volume_control_free(y->droid_volume), y->droid_volume = NULL;
     if (y->ofono_backend)
         pa_bluetooth_ofono_backend_free(y->ofono_backend);
     if (y->native_backend)
