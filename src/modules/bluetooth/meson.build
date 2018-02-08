@@ -18,6 +18,8 @@ libbluez5_util_headers = [
 
 if get_option('bluez5-native-headset')
   libbluez5_util_sources += [ 'backend-native.c' ]
+  libbluez5_util_sources += [ 'native-call-control.c' ]
+  libbluez5_util_headers += [ 'native-call-control.h' ]
   libbluez5_util_sources += [ 'upower.c' ]
   libbluez5_util_headers += [ 'upower.h' ]
 endif
