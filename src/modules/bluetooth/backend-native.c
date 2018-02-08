@@ -40,6 +40,7 @@
 
 #include "bluez5-util.h"
 #include "bt-codec-msbc.h"
+#include "native-call-control.h"
 #include "upower.h"
 
 #define MANDATORY_CALL_INDICATORS \
@@ -67,6 +68,7 @@ struct transport_data {
     pa_core *core;
     pa_bluetooth_transport *hsp_ag_transport;
     pa_time_event *ring_time_event;
+    pa_bluetooth_call_control *call_control;
     int rfcomm_fd;
     pa_io_event *rfcomm_io;
     int sco_fd;
@@ -900,7 +902,7 @@ static void rfcomm_io_callback(pa_mainloop_api *io, pa_io_event *e, int fd, pa_i
     if (events & PA_IO_EVENT_INPUT) {
         char rbuf[512];
         ssize_t len;
-        int gain, dummy;
+        int gain, button;
         bool do_reply = false;
         int vendor, product, version, features;
         char *buf = rbuf;
@@ -944,7 +946,10 @@ static void rfcomm_io_callback(pa_mainloop_api *io, pa_io_event *e, int fd, pa_i
                 t->source_volume = hsp_gain_to_volume(gain);
                 pa_hook_fire(pa_bluetooth_discovery_hook(t->device->discovery, PA_BLUETOOTH_HOOK_TRANSPORT_SOURCE_VOLUME_CHANGED), t);
                 do_reply = true;
-            } else if (sscanf(buf, "AT+CKPD=%d", &dummy) == 1) {
+            } else if (sscanf(buf, "AT+CKPD=%d", &button) == 1) {
+                struct transport_data *trd = t->userdata;
+                if (button == 200)
+                    pa_bluetooth_call_control_handle_button(trd->call_control);
                 do_reply = true;
             } else if (sscanf(buf, "AT+XAPL=%04x-%04x-%04x,%d", &vendor, &product, &version, &features) == 4) {
                 if (features & 0x2)
@@ -1030,6 +1035,7 @@ static void transport_destroy(pa_bluetooth_transport *t) {
     struct transport_data *trd = t->userdata;
 
     pa_bluetooth_droid_volume_control_release(t->device->discovery);
+    pa_bluetooth_call_control_free(trd->call_control);
 
     if (trd->sco_io) {
         trd->mainloop->io_free(trd->sco_io);
@@ -1197,6 +1203,7 @@ static DBusMessage *profile_new_connection(DBusConnection *conn, DBusMessage *m,
 
     if (t->profile == PA_BLUETOOTH_PROFILE_HSP_HS) {
         trd->hsp_ag_transport = t;
+        trd->call_control = pa_bluetooth_call_control_new(trd->core, t);
     }
 
     if (p != PA_BLUETOOTH_PROFILE_HFP_HF)
