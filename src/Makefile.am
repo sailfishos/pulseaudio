@@ -2323,6 +2323,12 @@ libbluez5_util_la_SOURCES += \
 		modules/bluetooth/droid-volume.c \
 		modules/bluetooth/droid-volume.h
 
+if HAVE_BLUEZ_5_NATIVE_HEADSET
+libbluez5_util_la_SOURCES += \
+		modules/bluetooth/native-call-control.c \
+		modules/bluetooth/native-call-control.h
+endif
+
 libbluez5_util_la_LDFLAGS = -avoid-version
 libbluez5_util_la_LIBADD = $(MODULE_LIBADD) $(DBUS_LIBS)
 libbluez5_util_la_CFLAGS = $(AM_CFLAGS) $(DBUS_CFLAGS)
