@@ -28,6 +28,8 @@
 #include <pulsecore/core-util.h>
 #include <pulsecore/dbus-shared.h>
 #include <pulsecore/log.h>
+#include <pulse/timeval.h>
+#include <pulse/rtclock.h>
 
 #include <errno.h>
 #include <sys/types.h>
@@ -62,6 +64,9 @@ struct pa_bluetooth_backend {
 };
 
 struct transport_data {
+    pa_core *core;
+    pa_bluetooth_transport *hsp_ag_transport;
+    pa_time_event *ring_time_event;
     int rfcomm_fd;
     pa_io_event *rfcomm_io;
     int sco_fd;
@@ -1179,14 +1184,20 @@ static DBusMessage *profile_new_connection(DBusConnection *conn, DBusMessage *m,
     pa_bluetooth_transport_reconfigure(t, pa_bluetooth_get_hf_codec("CVSD"), sco_transport_write, NULL);
 
     trd = pa_xnew0(struct transport_data, 1);
+    trd->core = b->core;
     trd->rfcomm_fd = fd;
     trd->mainloop = b->core->mainloop;
     trd->backend = b;
     trd->rfcomm_io = trd->mainloop->io_new(b->core->mainloop, fd, PA_IO_EVENT_INPUT,
         rfcomm_io_callback, t);
+    t->native = true;
     t->userdata =  trd;
 
     sco_listen(t);
+
+    if (t->profile == PA_BLUETOOTH_PROFILE_HSP_HS) {
+        trd->hsp_ag_transport = t;
+    }
 
     if (p != PA_BLUETOOTH_PROFILE_HFP_HF)
         transport_put(t);
@@ -1421,4 +1432,61 @@ void pa_bluetooth_native_backend_free(pa_bluetooth_backend *backend) {
     pa_dbus_connection_unref(backend->connection);
 
     pa_xfree(backend);
+}
+
+#define RING_WAIT_TIME ((pa_usec_t) (3 * PA_USEC_PER_SEC))
+
+static void ring_time_cb(pa_mainloop_api *a, pa_time_event *e, const struct timeval *t, void *userdata) {
+    struct transport_data *trd;
+    const char *buf = "\r\nRING\r\n";
+    const ssize_t len = strlen(buf);
+    ssize_t written;
+
+    trd = userdata;
+
+    if (trd->rfcomm_fd < 0)
+        return;
+
+    pa_log_debug("RFCOMM >> RING");
+    written = write(trd->rfcomm_fd, buf, len);
+
+    if (written != len)
+        pa_log_error("RFCOMM write error: %s", pa_cstrerror(errno));
+
+    pa_core_rttime_restart(trd->core, trd->ring_time_event, pa_rtclock_now() + RING_WAIT_TIME);
+}
+
+static void ring_start(struct transport_data *trd) {
+    pa_assert(trd);
+
+    if (!trd->ring_time_event)
+        trd->ring_time_event = pa_core_rttime_new(trd->core,
+                                                  pa_rtclock_now(),
+                                                  ring_time_cb, trd);
+}
+
+static void ring_stop(struct transport_data *trd) {
+    pa_assert(trd);
+
+    if (trd->ring_time_event) {
+        trd->core->mainloop->time_free(trd->ring_time_event);
+        trd->ring_time_event = NULL;
+    }
+}
+
+void pa_bluetooth_native_backend_ring(pa_bluetooth_transport *t, bool active) {
+    struct transport_data *trd;
+
+    if (!t || !t->native)
+        return;
+
+    pa_assert_se((trd = t->userdata));
+
+    if (trd->hsp_ag_transport != t)
+        return;
+
+    if (active)
+        ring_start(t->userdata);
+    else
+        ring_stop(t->userdata);
 }
