@@ -37,6 +37,7 @@
 #include <bluetooth/sco.h>
 
 #include "bluez5-util.h"
+#include "native-call-control.h"
 
 struct pa_bluetooth_backend {
   pa_core *core;
@@ -51,6 +52,7 @@ struct transport_data {
     pa_core *core;
     pa_bluetooth_transport *hsp_ag_transport;
     pa_time_event *ring_time_event;
+    pa_bluetooth_call_control *call_control;
     int rfcomm_fd;
     pa_io_event *rfcomm_io;
     int sco_fd;
@@ -374,7 +376,7 @@ static void rfcomm_io_callback(pa_mainloop_api *io, pa_io_event *e, int fd, pa_i
     if (events & PA_IO_EVENT_INPUT) {
         char buf[512];
         ssize_t len;
-        int gain, dummy;
+        int gain, button;
         bool  do_reply = false;
 
         len = pa_read(fd, buf, 511, NULL);
@@ -404,7 +406,10 @@ static void rfcomm_io_callback(pa_mainloop_api *io, pa_io_event *e, int fd, pa_i
             t->microphone_gain = gain;
             pa_hook_fire(pa_bluetooth_discovery_hook(t->device->discovery, PA_BLUETOOTH_HOOK_TRANSPORT_MICROPHONE_GAIN_CHANGED), t);
             do_reply = true;
-        } else if (sscanf(buf, "AT+CKPD=%d", &dummy) == 1) {
+        } else if (sscanf(buf, "AT+CKPD=%d", &button) == 1) {
+            struct transport_data *trd = t->userdata;
+            if (button == 200)
+                pa_bluetooth_call_control_handle_button(trd->call_control);
             do_reply = true;
         } else {
             do_reply = false;
@@ -433,6 +438,7 @@ static void transport_destroy(pa_bluetooth_transport *t) {
     struct transport_data *trd = t->userdata;
 
     pa_bluetooth_droid_volume_control_release(t->device->discovery);
+    pa_bluetooth_call_control_free(trd->call_control);
 
     if (trd->sco_io) {
         trd->mainloop->io_free(trd->sco_io);
@@ -570,6 +576,7 @@ static DBusMessage *profile_new_connection(DBusConnection *conn, DBusMessage *m,
 
     if (t->profile == PA_BLUETOOTH_PROFILE_HEADSET_HEAD_UNIT) {
         trd->hsp_ag_transport = t;
+        trd->call_control = pa_bluetooth_call_control_new(trd->core, t);
     }
 
     pa_bluetooth_transport_put(t);
