@@ -1038,6 +1038,11 @@ void pa_bluetooth_discovery_set_ofono_running(pa_bluetooth_discovery *y, bool is
     if (y->headset_backend != HEADSET_BACKEND_AUTO)
         return;
 
+    /* With droid backend we always assume ofono should be running, and if ofono
+     * disappears it (should) appear soon again anyway. */
+    if (pa_bluetooth_droid_backend(y))
+        return;
+
     /* If ofono starts running, all devices that might be connected to the HS role
      * need to be disconnected, so that the devices can be handled by ofono */
     if (is_running) {
