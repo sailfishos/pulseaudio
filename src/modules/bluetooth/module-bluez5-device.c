@@ -749,7 +749,7 @@ static int transport_acquire(struct userdata *u, bool optional) {
     if (u->transport_acquired)
         return 0;
 
-    pa_log_debug("Acquiring transport %s", u->transport->path);
+    pa_log_debug("Acquiring %stransport %s", optional ? "(optional) " : "", u->transport->path);
 
     u->stream_fd = u->transport->acquire(u->transport, optional, &u->read_link_mtu, &u->write_link_mtu);
     if (u->stream_fd < 0)
@@ -772,6 +772,12 @@ static int transport_acquire(struct userdata *u, bool optional) {
 
 static void transport_release(struct userdata *u) {
     pa_assert(u->transport);
+
+    /* Cancel deferred oFono transport acquiring. */
+    if (!u->transport_acquired && u->stream_fd == -EAGAIN) {
+        pa_log_debug("Releasing transport while deferred acquiring is ongoing.");
+        u->transport->release(u->transport);
+    }
 
     /* Ignore if already released */
     if (!u->transport_acquired)
