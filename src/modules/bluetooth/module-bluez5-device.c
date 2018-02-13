@@ -725,10 +725,9 @@ static void teardown_stream(struct userdata *u) {
         u->rtpoll_item = NULL;
     }
 
-    if (u->stream_fd >= 0) {
+    if (u->stream_fd >= 0)
         pa_close(u->stream_fd);
-        u->stream_fd = -1;
-    }
+    u->stream_fd = -1;
 
     if (u->read_smoother) {
         pa_smoother_free(u->read_smoother);
