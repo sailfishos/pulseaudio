@@ -2188,6 +2188,24 @@ static pa_hook_result_t transport_state_changed_cb(pa_bluetooth_discovery *y, pa
     if (t == u->transport && t->state <= PA_BLUETOOTH_TRANSPORT_STATE_DISCONNECTED)
         pa_assert_se(pa_card_set_profile(u->card, pa_hashmap_get(u->card->profiles, "off"), false) >= 0);
 
+    if (t->device == u->device &&
+        u->profile == PA_BLUETOOTH_PROFILE_OFF &&
+        !u->transport &&
+        t->state > PA_BLUETOOTH_TRANSPORT_STATE_DISCONNECTED &&
+        t == u->device->transports[PA_BLUETOOTH_PROFILE_HEADSET_HEAD_UNIT]) {
+
+        u->profile = PA_BLUETOOTH_PROFILE_HEADSET_HEAD_UNIT;
+        init_profile(u);
+        u->card->active_profile = pa_hashmap_get(u->card->profiles, pa_bluetooth_profile_to_string(PA_BLUETOOTH_PROFILE_HEADSET_HEAD_UNIT));
+        pa_hook_fire(&u->core->hooks[PA_CORE_HOOK_CARD_PROFILE_CHANGED], u->card);
+
+    } else if (!u->transport && t->state > PA_BLUETOOTH_TRANSPORT_STATE_DISCONNECTED) {
+        pa_log_warn("Inactive transport woke up.");
+        if (t->release)
+            t->release(t);
+        return PA_HOOK_OK;
+    }
+
     if (t->device == u->device)
         handle_transport_state_change(u, t);
 
