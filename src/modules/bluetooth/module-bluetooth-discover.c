@@ -115,7 +115,7 @@ int pa__init(pa_module* m) {
 
     if (pa_module_exists("module-bluez5-discover")) {
         arg_string = bluez_args[BZ_VERSION_5] ? pa_strbuf_to_string(bluez_args[BZ_VERSION_5]) : NULL;
-        mm = pa_module_load(m->core, "module-bluez5-discover", arg_string);
+        mm = pa_module_load(m->core, "module-bluez5-discover", pa_modargs_get_value(ma, "bluez5_args", arg_string));
         if (mm)
             u->bluez5_module_idx = mm->index;
         pa_xfree(arg_string);
@@ -123,7 +123,7 @@ int pa__init(pa_module* m) {
 
     if (pa_module_exists("module-bluez4-discover")) {
         arg_string = bluez_args[BZ_VERSION_4] ? pa_strbuf_to_string(bluez_args[BZ_VERSION_4]) : NULL;
-        mm = pa_module_load(m->core, "module-bluez4-discover",  arg_string);
+        mm = pa_module_load(m->core, "module-bluez4-discover",  pa_modargs_get_value(ma, "bluez4_args", arg_string));
         if (mm)
             u->bluez4_module_idx = mm->index;
         pa_xfree(arg_string);
