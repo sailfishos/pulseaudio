@@ -141,7 +141,7 @@ static int source_process_msg(pa_msgobject *o, int code, void *data, int64_t off
 
             /* Convert it to usec */
             n = l * pa_frame_size(&u->source->sample_spec);
-            *((pa_usec_t*) data) = pa_bytes_to_usec(n, &u->source->sample_spec);
+            *((int64_t*) data) = pa_bytes_to_usec(n, &u->source->sample_spec);
 
             return 0;
         }
@@ -274,9 +274,18 @@ int pa__init(pa_module*m) {
     u->module = m;
     u->saved_frame_time_valid = false;
     u->rtpoll = pa_rtpoll_new();
-    pa_thread_mq_init(&u->thread_mq, m->core->mainloop, u->rtpoll);
+
+    if (pa_thread_mq_init(&u->thread_mq, m->core->mainloop, u->rtpoll) < 0) {
+        pa_log("pa_thread_mq_init() failed.");
+        goto fail;
+    }
 
     u->jack_msgq = pa_asyncmsgq_new(0);
+    if (!u->jack_msgq) {
+        pa_log("pa_asyncmsgq_new() failed.");
+        goto fail;
+    }
+
     u->rtpoll_item = pa_rtpoll_item_new_asyncmsgq_read(u->rtpoll, PA_RTPOLL_EARLY-1, u->jack_msgq);
 
     if (!(u->client = jack_client_open(client_name, server_name ? JackServerName : JackNullOption, &status, server_name))) {

@@ -138,6 +138,7 @@
 #include <pulsecore/strlist.h>
 #include <pulsecore/cpu-x86.h>
 #include <pulsecore/pipe.h>
+#include <pulsecore/once.h>
 
 #include "core-util.h"
 
@@ -729,7 +730,7 @@ static int set_scheduler(int rtprio) {
     /* Try to talk to RealtimeKit */
 
     if (!(bus = dbus_bus_get_private(DBUS_BUS_SYSTEM, &error))) {
-        pa_log("Failed to connect to system bus: %s\n", error.message);
+        pa_log("Failed to connect to system bus: %s", error.message);
         dbus_error_free(&error);
         errno = -EIO;
         return -1;
@@ -746,7 +747,7 @@ static int set_scheduler(int rtprio) {
         r = getrlimit(RLIMIT_RTTIME, &rl);
 
         if (r >= 0 && (long long) rl.rlim_max > rttime) {
-            pa_log_info("Clamping rlimit-rttime to %lld for RealtimeKit\n", rttime);
+            pa_log_info("Clamping rlimit-rttime to %lld for RealtimeKit", rttime);
             rl.rlim_cur = rl.rlim_max = rttime;
             r = setrlimit(RLIMIT_RTTIME, &rl);
 
@@ -866,7 +867,7 @@ static int set_nice(int nice_level) {
     /* Try to talk to RealtimeKit */
 
     if (!(bus = dbus_bus_get_private(DBUS_BUS_SYSTEM, &error))) {
-        pa_log("Failed to connect to system bus: %s\n", error.message);
+        pa_log("Failed to connect to system bus: %s", error.message);
         dbus_error_free(&error);
         errno = -EIO;
         return -1;
@@ -1061,7 +1062,7 @@ int pa_parse_volume(const char *v, pa_volume_t *volume) {
     return 0;
 }
 
-/* Split the specified string wherever one of the strings in delimiter
+/* Split the specified string wherever one of the characters in delimiter
  * occurs. Each time it is called returns a newly allocated string
  * with pa_xmalloc(). The variable state points to, should be
  * initialized to NULL before the first call. */
@@ -1081,7 +1082,7 @@ char *pa_split(const char *c, const char *delimiter, const char**state) {
     return pa_xstrndup(current, l);
 }
 
-/* Split the specified string wherever one of the strings in delimiter
+/* Split the specified string wherever one of the characters in delimiter
  * occurs. Each time it is called returns a pointer to the substring within the
  * string and the length in 'n'. Note that the resultant string cannot be used
  * as-is without the length parameter, since it is merely pointing to a point
@@ -1118,6 +1119,25 @@ char *pa_split_spaces(const char *c, const char **state) {
     *state = current+l;
 
     return pa_xstrndup(current, l);
+}
+
+/* Similar to pa_split_spaces, except this returns a string in-place.
+   Returned string is generally not NULL-terminated.
+   See pa_split_in_place(). */
+const char *pa_split_spaces_in_place(const char *c, int *n, const char **state) {
+    const char *current = *state ? *state : c;
+    size_t l;
+
+    if (!*current || *c == 0)
+        return NULL;
+
+    current += strspn(current, WHITESPACE);
+    l = strcspn(current, WHITESPACE);
+
+    *state = current+l;
+
+    *n = l;
+    return current;
 }
 
 PA_STATIC_TLS_DECLARE(signame, pa_xfree);
@@ -2535,8 +2555,10 @@ char *pa_getcwd(void) {
         if (getcwd(p, l))
             return p;
 
-        if (errno != ERANGE)
+        if (errno != ERANGE) {
+            pa_xfree(p);
             return NULL;
+        }
 
         pa_xfree(p);
         l *= 2;
@@ -2551,6 +2573,7 @@ void *pa_will_need(const void *p, size_t l) {
     size_t size;
     int r = ENOTSUP;
     size_t bs;
+    const size_t page_size = pa_page_size();
 
     pa_assert(p);
     pa_assert(l > 0);
@@ -2575,7 +2598,7 @@ void *pa_will_need(const void *p, size_t l) {
 #ifdef RLIMIT_MEMLOCK
     pa_assert_se(getrlimit(RLIMIT_MEMLOCK, &rlim) == 0);
 
-    if (rlim.rlim_cur < PA_PAGE_SIZE) {
+    if (rlim.rlim_cur < page_size) {
         pa_log_debug("posix_madvise() failed (or doesn't exist), resource limits don't allow mlock(), can't page in data: %s", pa_cstrerror(r));
         errno = EPERM;
         return (void*) p;
@@ -2583,7 +2606,7 @@ void *pa_will_need(const void *p, size_t l) {
 
     bs = PA_PAGE_ALIGN((size_t) rlim.rlim_cur);
 #else
-    bs = PA_PAGE_SIZE*4;
+    bs = page_size*4;
 #endif
 
     pa_log_debug("posix_madvise() failed (or doesn't exist), trying mlock(): %s", pa_cstrerror(r));
@@ -2977,21 +3000,38 @@ bool pa_in_system_mode(void) {
     return !!atoi(e);
 }
 
-/* Checks a whitespace-separated list of words in haystack for needle */
-bool pa_str_in_list_spaces(const char *haystack, const char *needle) {
+/* Checks a delimiters-separated list of words in haystack for needle */
+bool pa_str_in_list(const char *haystack, const char *delimiters, const char *needle) {
     char *s;
     const char *state = NULL;
 
     if (!haystack || !needle)
         return false;
 
-    while ((s = pa_split_spaces(haystack, &state))) {
+    while ((s = pa_split(haystack, delimiters, &state))) {
         if (pa_streq(needle, s)) {
             pa_xfree(s);
             return true;
         }
 
         pa_xfree(s);
+    }
+
+    return false;
+}
+
+/* Checks a whitespace-separated list of words in haystack for needle */
+bool pa_str_in_list_spaces(const char *haystack, const char *needle) {
+    const char *s;
+    int n;
+    const char *state = NULL;
+
+    if (!haystack || !needle)
+        return false;
+
+    while ((s = pa_split_spaces_in_place(haystack, &n, &state))) {
+        if (pa_strneq(needle, s, n))
+            return true;
     }
 
     return false;
@@ -3177,8 +3217,8 @@ void pa_reduce(unsigned *num, unsigned *den) {
 unsigned pa_ncpus(void) {
     long ncpus;
 
-#ifdef _SC_NPROCESSORS_CONF
-    ncpus = sysconf(_SC_NPROCESSORS_CONF);
+#ifdef _SC_NPROCESSORS_ONLN
+    ncpus = sysconf(_SC_NPROCESSORS_ONLN);
 #else
     ncpus = 1;
 #endif
@@ -3192,6 +3232,7 @@ char *pa_replace(const char*s, const char*a, const char *b) {
 
     pa_assert(s);
     pa_assert(a);
+    pa_assert(*a);
     pa_assert(b);
 
     an = strlen(a);
@@ -3488,6 +3529,16 @@ int pa_pipe_cloexec(int pipefd[2]) {
     if ((r = pipe2(pipefd, O_CLOEXEC)) >= 0)
         goto finish;
 
+    if (errno == EMFILE) {
+        pa_log_error("The per-process limit on the number of open file descriptors has been reached.");
+        return r;
+    }
+
+    if (errno == ENFILE) {
+        pa_log_error("The system-wide limit on the total number of open files has been reached.");
+        return r;
+    }
+
     if (errno != EINVAL && errno != ENOSYS)
         return r;
 
@@ -3495,6 +3546,16 @@ int pa_pipe_cloexec(int pipefd[2]) {
 
     if ((r = pipe(pipefd)) >= 0)
         goto finish;
+
+    if (errno == EMFILE) {
+        pa_log_error("The per-process limit on the number of open file descriptors has been reached.");
+        return r;
+    }
+
+    if (errno == ENFILE) {
+        pa_log_error("The system-wide limit on the total number of open files has been reached.");
+        return r;
+    }
 
     /* return error */
     return r;
@@ -3665,4 +3726,24 @@ bool pa_running_in_vm(void) {
 #endif
 
     return false;
+}
+
+size_t pa_page_size(void) {
+#if defined(PAGE_SIZE)
+    return PAGE_SIZE;
+#elif defined(PAGESIZE)
+    return PAGESIZE;
+#elif defined(HAVE_SYSCONF)
+    static size_t page_size = 4096; /* Let's hope it's like x86. */
+
+    PA_ONCE_BEGIN {
+        long ret = sysconf(_SC_PAGE_SIZE);
+        if (ret > 0)
+            page_size = ret;
+    } PA_ONCE_END;
+
+    return page_size;
+#else
+    return 4096;
+#endif
 }

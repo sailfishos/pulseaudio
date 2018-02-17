@@ -233,7 +233,7 @@ static void adjust_rates(struct userdata *u) {
 
     avg_total_latency /= n;
 
-    target_latency = max_sink_latency > min_total_latency ? max_sink_latency : min_total_latency;
+    target_latency = PA_MAX(max_sink_latency, min_total_latency);
 
     pa_log_info("[%s] avg total latency is %0.2f msec.", u->sink->name, (double) avg_total_latency / PA_USEC_PER_MSEC);
     pa_log_info("[%s] target latency is %0.2f msec.", u->sink->name, (double) target_latency / PA_USEC_PER_MSEC);
@@ -876,17 +876,15 @@ static int sink_process_msg(pa_msgobject *o, int code, void *data, int64_t offse
         }
 
         case PA_SINK_MESSAGE_GET_LATENCY: {
-            pa_usec_t x, y, c, *delay = data;
+            pa_usec_t x, y, c;
+            int64_t *delay = data;
 
             x = pa_rtclock_now();
             y = pa_smoother_get(u->thread_info.smoother, x);
 
             c = pa_bytes_to_usec(u->thread_info.counter, &u->sink->sample_spec);
 
-            if (y < c)
-                *delay = c - y;
-            else
-                *delay = 0;
+            *delay = (int64_t)c - y;
 
             return 0;
         }
@@ -1025,9 +1023,25 @@ static struct output *output_new(struct userdata *u, pa_sink *sink) {
 
     o = pa_xnew0(struct output, 1);
     o->userdata = u;
+
     o->audio_inq = pa_asyncmsgq_new(0);
+    if (!o->audio_inq) {
+        pa_log("pa_asyncmsgq_new() failed.");
+        goto fail;
+    }
+
     o->control_inq = pa_asyncmsgq_new(0);
+    if (!o->control_inq) {
+        pa_log("pa_asyncmsgq_new() failed.");
+        goto fail;
+    }
+
     o->outq = pa_asyncmsgq_new(0);
+    if (!o->outq) {
+        pa_log("pa_asyncmsgq_new() failed.");
+        goto fail;
+    }
+
     o->sink = sink;
     o->memblockq = pa_memblockq_new(
             "module-combine-sink output memblockq",
@@ -1044,6 +1058,11 @@ static struct output *output_new(struct userdata *u, pa_sink *sink) {
     update_description(u);
 
     return o;
+
+fail:
+    output_free(o);
+
+    return NULL;
 }
 
 /* Called from main context */
@@ -1289,7 +1308,12 @@ int pa__init(pa_module*m) {
     u->core = m->core;
     u->module = m;
     u->rtpoll = pa_rtpoll_new();
-    pa_thread_mq_init(&u->thread_mq, m->core->mainloop, u->rtpoll);
+
+    if (pa_thread_mq_init(&u->thread_mq, m->core->mainloop, u->rtpoll) < 0) {
+        pa_log("pa_thread_mq_init() failed.");
+        goto fail;
+    }
+
     u->resample_method = resample_method;
     u->outputs = pa_idxset_new(NULL, NULL);
     u->thread_info.smoother = pa_smoother_new(

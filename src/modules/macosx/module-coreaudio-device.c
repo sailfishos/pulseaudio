@@ -305,7 +305,7 @@ static int sink_process_msg(pa_msgobject *o, int code, void *data, int64_t offse
         }
 
         case PA_SINK_MESSAGE_GET_LATENCY: {
-            *((pa_usec_t *) data) = get_latency_us(PA_OBJECT(o));
+            *((int64_t *) data) = get_latency_us(PA_OBJECT(o));
             return 0;
         }
     }
@@ -343,7 +343,7 @@ static int source_process_msg(pa_msgobject *o, int code, void *data, int64_t off
         }
 
         case PA_SOURCE_MESSAGE_GET_LATENCY: {
-            *((pa_usec_t *) data) = get_latency_us(PA_OBJECT(o));
+            *((int64_t *) data) = get_latency_us(PA_OBJECT(o));
             return 0;
         }
     }
@@ -376,23 +376,23 @@ static int ca_sink_set_state(pa_sink *s, pa_sink_state_t state) {
 }
 
 /* Caveat: The caller is responsible to get rid of the CFString(Ref). */
-static bool CFString_to_cstr_n(CFStringRef cfstr, char *buf, long n) {
-    bool ret;
-
-    pa_assert (buf);
-
-    ret = false;
+static char * CFString_to_cstr(CFStringRef cfstr) {
+    char *ret = NULL;
 
     if (cfstr != NULL) {
         const char *tmp = CFStringGetCStringPtr(cfstr, kCFStringEncodingUTF8);
+        CFIndex n = CFStringGetLength(cfstr) + 1 /* for the terminating NULL */;
+
+        ret = pa_xmalloc(n);
 
         if (tmp == NULL) {
-            if (CFStringGetCString(cfstr, buf, n, kCFStringEncodingUTF8))
-                ret = true;
+            if (!CFStringGetCString(cfstr, ret, n, kCFStringEncodingUTF8)) {
+                pa_xfree(ret);
+                ret = NULL;
+            }
         } else {
-            strncpy(buf, tmp, n);
-            buf[n - 1] = 0;
-            ret = true;
+            strncpy(ret, tmp, n - 1);
+            ret[n - 1] = '\0';
         }
     }
 
@@ -408,10 +408,15 @@ static int ca_device_create_sink(pa_module *m, AudioBuffer *buf, int channel_idx
     coreaudio_sink *ca_sink;
     pa_sink *sink;
     unsigned int i;
-    char tmp[255];
+    char *tmp = NULL;
     pa_strbuf *strbuf;
     AudioObjectPropertyAddress property_address;
     CFStringRef tmp_cfstr = NULL;
+
+    if (buf->mNumberChannels > PA_CHANNELS_MAX) {
+        pa_log("Skipping device with more channels than we support (%u)", (unsigned int) buf->mNumberChannels);
+        return -1;
+    }
 
     ca_sink = pa_xnew0(coreaudio_sink, 1);
     ca_sink->map.channels = buf->mNumberChannels;
@@ -425,23 +430,25 @@ static int ca_device_create_sink(pa_module *m, AudioBuffer *buf, int channel_idx
         property_address.mSelector = kAudioObjectPropertyElementName;
         property_address.mScope = kAudioDevicePropertyScopeOutput;
         property_address.mElement = channel_idx + i + 1;
-        size = sizeof(tmp);
+        size = sizeof(tmp_cfstr);
         err = AudioObjectGetPropertyData(u->object_id, &property_address, 0, NULL, &size, &tmp_cfstr);
         if (err == 0) {
-            err = !(CFString_to_cstr_n(tmp_cfstr, tmp, sizeof(tmp)));
+            tmp = CFString_to_cstr(tmp_cfstr);
 
-            if (tmp_cfstr) {
+            if (tmp_cfstr)
                 CFRelease(tmp_cfstr);
-            }
         }
-
-        if (err || !strlen(tmp))
-            snprintf(tmp, sizeof(tmp), "Channel %d", (int) property_address.mElement);
 
         if (i > 0)
             pa_strbuf_puts(strbuf, ", ");
 
-        pa_strbuf_puts(strbuf, tmp);
+        if (err || !tmp || !strlen(tmp))
+            pa_strbuf_printf(strbuf, "Channel %d", (int) property_address.mElement);
+        else
+            pa_strbuf_puts(strbuf, tmp);
+
+        pa_xfree(tmp);
+        tmp = NULL;
     }
 
     ca_sink->name = pa_strbuf_to_string_free(strbuf);
@@ -535,10 +542,15 @@ static int ca_device_create_source(pa_module *m, AudioBuffer *buf, int channel_i
     coreaudio_source *ca_source;
     pa_source *source;
     unsigned int i;
-    char tmp[255];
+    char *tmp = NULL;
     pa_strbuf *strbuf;
     AudioObjectPropertyAddress property_address;
     CFStringRef tmp_cfstr = NULL;
+
+    if (buf->mNumberChannels > PA_CHANNELS_MAX) {
+        pa_log("Skipping device with more channels than we support (%u)", (unsigned int) buf->mNumberChannels);
+        return -1;
+    }
 
     ca_source = pa_xnew0(coreaudio_source, 1);
     ca_source->map.channels = buf->mNumberChannels;
@@ -552,23 +564,25 @@ static int ca_device_create_source(pa_module *m, AudioBuffer *buf, int channel_i
         property_address.mSelector = kAudioObjectPropertyElementName;
         property_address.mScope = kAudioDevicePropertyScopeInput;
         property_address.mElement = channel_idx + i + 1;
-        size = sizeof(tmp);
+        size = sizeof(tmp_cfstr);
         err = AudioObjectGetPropertyData(u->object_id, &property_address, 0, NULL, &size, &tmp_cfstr);
         if (err == 0) {
-            err = !(CFString_to_cstr_n(tmp_cfstr, tmp, sizeof(tmp)));
+            tmp = CFString_to_cstr(tmp_cfstr);
 
-            if (tmp_cfstr) {
+            if (tmp_cfstr)
                 CFRelease(tmp_cfstr);
-            }
         }
-
-        if (err || !strlen(tmp))
-            snprintf(tmp, sizeof(tmp), "Channel %d", (int) property_address.mElement);
 
         if (i > 0)
             pa_strbuf_puts(strbuf, ", ");
 
-        pa_strbuf_puts(strbuf, tmp);
+        if (err || !tmp || !strlen(tmp))
+            pa_strbuf_printf(strbuf, "Channel %d", (int) property_address.mElement);
+        else
+            pa_strbuf_puts(strbuf, tmp);
+
+        pa_xfree(tmp);
+        tmp = NULL;
     }
 
     ca_source->name = pa_strbuf_to_string_free(strbuf);
@@ -807,10 +821,22 @@ int pa__init(pa_module *m) {
     pa_card_new_data_done(&card_new_data);
     u->card->userdata = u;
     u->card->set_profile = card_set_profile;
+    pa_card_choose_initial_profile(u->card);
+    pa_card_put(u->card);
 
     u->rtpoll = pa_rtpoll_new();
-    pa_thread_mq_init(&u->thread_mq, m->core->mainloop, u->rtpoll);
+
+    if (pa_thread_mq_init(&u->thread_mq, m->core->mainloop, u->rtpoll) < 0) {
+        pa_log("pa_thread_mq_init() failed.");
+        goto fail;
+    }
+
     u->async_msgq = pa_asyncmsgq_new(0);
+    if (!u->async_msgq) {
+        pa_log("pa_asyncmsgq_new() failed.");
+        goto fail;
+    }
+
     pa_rtpoll_item_new_asyncmsgq_read(u->rtpoll, PA_RTPOLL_EARLY-1, u->async_msgq);
 
     PA_LLIST_HEAD_INIT(coreaudio_sink, u->sinks);
@@ -894,8 +920,10 @@ void pa__done(pa_module *m) {
         pa_asyncmsgq_send(u->thread_mq.inq, NULL, PA_MESSAGE_SHUTDOWN, NULL, 0, NULL);
         pa_thread_free(u->thread);
         pa_thread_mq_done(&u->thread_mq);
-        pa_asyncmsgq_unref(u->async_msgq);
     }
+
+    if (u->async_msgq)
+        pa_asyncmsgq_unref(u->async_msgq);
 
     /* free sinks */
     for (ca_sink = u->sinks; ca_sink;) {

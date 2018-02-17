@@ -3,7 +3,7 @@
 
 Name:       pulseaudio
 
-%define pulseversion 8.0
+%define pulseversion 11.1
 
 Summary:    General purpose sound server
 Version:    %{pulseversion}
@@ -201,6 +201,7 @@ install -m 644 %{SOURCE4} %{buildroot}/%{_sysconfdir}/pulse/client.conf.d
 %{_libdir}/pulse-%{pulseversion}/modules/libprotocol-native.so
 %{_libdir}/pulse-%{pulseversion}/modules/libprotocol-simple.so
 %{_libdir}/pulse-%{pulseversion}/modules/librtp.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-allow-passthrough.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-alsa-card.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-alsa-sink.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-alsa-source.so
@@ -299,8 +300,10 @@ install -m 644 %{SOURCE4} %{buildroot}/%{_sysconfdir}/pulse/client.conf.d
 %dir %{_includedir}/pulse
 %dir %{_includedir}/pulsecore
 %dir %{_includedir}/pulsecore/filter
+%dir %{_includedir}/pulsecore/ffmpeg
 %{_includedir}/pulse/*.h
 %{_includedir}/pulsecore/filter/*.h
+%{_includedir}/pulsecore/ffmpeg/*.h
 %{_includedir}/pulsecore/*.h
 %dir %{_libdir}/cmake/PulseAudio
 %{_libdir}/cmake/PulseAudio/*.cmake

@@ -410,11 +410,6 @@ success:
     if (ss->format != _ss.format)
         pa_log_info("Device %s doesn't support sample format %s, changed to %s.", snd_pcm_name(pcm_handle), pa_sample_format_to_string(ss->format), pa_sample_format_to_string(_ss.format));
 
-    if ((ret = snd_pcm_prepare(pcm_handle)) < 0) {
-        pa_log_info("snd_pcm_prepare() failed: %s", pa_alsa_strerror(ret));
-        goto finish;
-    }
-
     if ((ret = snd_pcm_hw_params_current(pcm_handle, hwparams)) < 0) {
         pa_log_info("snd_pcm_hw_params_current() failed: %s", pa_alsa_strerror(ret));
         goto finish;
@@ -474,32 +469,32 @@ int pa_alsa_set_sw_params(snd_pcm_t *pcm, snd_pcm_uframes_t avail_min, bool peri
     snd_pcm_sw_params_alloca(&swparams);
 
     if ((err = snd_pcm_sw_params_current(pcm, swparams)) < 0) {
-        pa_log_warn("Unable to determine current swparams: %s\n", pa_alsa_strerror(err));
+        pa_log_warn("Unable to determine current swparams: %s", pa_alsa_strerror(err));
         return err;
     }
 
     if ((err = snd_pcm_sw_params_set_period_event(pcm, swparams, period_event)) < 0) {
-        pa_log_warn("Unable to disable period event: %s\n", pa_alsa_strerror(err));
+        pa_log_warn("Unable to disable period event: %s", pa_alsa_strerror(err));
         return err;
     }
 
     if ((err = snd_pcm_sw_params_set_tstamp_mode(pcm, swparams, SND_PCM_TSTAMP_ENABLE)) < 0) {
-        pa_log_warn("Unable to enable time stamping: %s\n", pa_alsa_strerror(err));
+        pa_log_warn("Unable to enable time stamping: %s", pa_alsa_strerror(err));
         return err;
     }
 
     if ((err = snd_pcm_sw_params_get_boundary(swparams, &boundary)) < 0) {
-        pa_log_warn("Unable to get boundary: %s\n", pa_alsa_strerror(err));
+        pa_log_warn("Unable to get boundary: %s", pa_alsa_strerror(err));
         return err;
     }
 
     if ((err = snd_pcm_sw_params_set_stop_threshold(pcm, swparams, boundary)) < 0) {
-        pa_log_warn("Unable to set stop threshold: %s\n", pa_alsa_strerror(err));
+        pa_log_warn("Unable to set stop threshold: %s", pa_alsa_strerror(err));
         return err;
     }
 
     if ((err = snd_pcm_sw_params_set_start_threshold(pcm, swparams, (snd_pcm_uframes_t) -1)) < 0) {
-        pa_log_warn("Unable to set start threshold: %s\n", pa_alsa_strerror(err));
+        pa_log_warn("Unable to set start threshold: %s", pa_alsa_strerror(err));
         return err;
     }
 
@@ -509,7 +504,7 @@ int pa_alsa_set_sw_params(snd_pcm_t *pcm, snd_pcm_uframes_t avail_min, bool peri
     }
 
     if ((err = snd_pcm_sw_params(pcm, swparams)) < 0) {
-        pa_log_warn("Unable to set sw params: %s\n", pa_alsa_strerror(err));
+        pa_log_warn("Unable to set sw params: %s", pa_alsa_strerror(err));
         return err;
     }
 
@@ -749,6 +744,13 @@ snd_pcm_t *pa_alsa_open_by_device_string(
             pa_log_info("Failed to set hardware parameters on %s: %s", d, pa_alsa_strerror(err));
             snd_pcm_close(pcm_handle);
 
+            goto fail;
+        }
+
+        if (ss->channels > PA_CHANNELS_MAX) {
+            pa_log("Device %s has %u channels, but PulseAudio supports only %u channels. Unable to use the device.",
+                   d, ss->channels, PA_CHANNELS_MAX);
+            snd_pcm_close(pcm_handle);
             goto fail;
         }
 
@@ -1546,7 +1548,7 @@ static int mixer_class_event(snd_mixer_class_t *class, unsigned int mask,
         return 0;
     }
     else
-        pa_log_info("Got an unknown mixer class event for %s: mask 0x%x\n", name, mask);
+        pa_log_info("Got an unknown mixer class event for %s: mask 0x%x", name, mask);
 
     return 0;
 }

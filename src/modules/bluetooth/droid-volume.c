@@ -1,8 +1,9 @@
+
 /***
   This file is part of PulseAudio.
 
   Copyright 2017 Jolla Ltd.
-                Contact: Juho Hämäläinen <juho.hamalainen@jolla.com>
+            Contact: Juho Hämäläinen <juho.hamalainen@jolla.com>
 
   PulseAudio is free software; you can redistribute it and/or modify
   it under the terms of the GNU Lesser General Public License as
@@ -28,7 +29,10 @@
 #include <pulsecore/dbus-shared.h>
 #include <pulsecore/shared.h>
 #include <pulsecore/core-error.h>
+#include <pulse/timeval.h>
+#include <pulse/rtclock.h>
 
+#include "droid-volume.h"
 #include "bluez5-util.h"
 
 #define HSP_MAX_GAIN 15
@@ -39,12 +43,12 @@
 
 struct pa_droid_volume_control {
     pa_core *core;
-    pa_bluetooth_discovery *discovery;
     pa_dbus_connection *connection;
     pa_hook_slot *sink_input_volume_changed_slot;
     pa_hook_slot *transport_speaker_gain_changed_slot;
     pa_bluetooth_transport *transport;
     char *modem_path;
+    pa_time_event *volume_time_event;
 };
 
 static void headset_volume_changed(pa_droid_volume_control *control, int gain) {
@@ -52,6 +56,7 @@ static void headset_volume_changed(pa_droid_volume_control *control, int gain) {
     uint32_t idx = 0;
 
     pa_assert(control);
+    pa_assert(control->transport);
 
     PA_IDXSET_FOREACH(si, control->core->sink_inputs, idx) {
         if (pa_safe_streq(pa_proplist_gets(si->proplist, PA_PROP_MEDIA_ROLE), "phone")) {
@@ -66,7 +71,8 @@ static void headset_volume_changed(pa_droid_volume_control *control, int gain) {
 
             pa_cvolume_set(&volume, si->sample_spec.channels, v);
 
-            pa_log_debug("headset volume changes to %d -> %d", gain, v);
+            pa_log_debug("%s: headset volume changes to %d -> %d",
+                         pa_bluetooth_profile_to_string(control->transport->profile), v, gain);
 
             pa_sink_input_set_volume(si, &volume, true, false);
 
@@ -119,31 +125,54 @@ static pa_hook_result_t sink_input_volume_changed_cb(pa_core *c, pa_sink_input *
         if (gain > HSP_MAX_GAIN)
             gain = HSP_MAX_GAIN;
 
-        pa_log_debug("phone volume changes to %d -> %d", v, gain);
+        pa_log_debug("%s: phone volume changes to %d -> %d",
+                     pa_bluetooth_profile_to_string(control->transport->profile), v, gain);
 
-        switch (control->transport->profile) {
-            case PA_BLUETOOTH_PROFILE_DROID_HEADSET_HFP:
-                headset_volume_set(control, (unsigned char) gain);
-                break;
-
-            case PA_BLUETOOTH_PROFILE_DROID_HEADSET_HSP:
-                pa_assert(control->transport->set_speaker_gain);
-                control->transport->set_speaker_gain(control->transport, gain);
-                break;
-
-            default:
-                pa_log_debug("droid hsp/hfp not up, ignoring.");
-                break;
+        if (control->transport->set_speaker_gain) {
+            control->transport->set_speaker_gain(control->transport, gain);
+        } else {
+            headset_volume_set(control, (unsigned char) gain);
         }
     }
 
     return PA_HOOK_OK;
 }
 
-void pa_droid_volume_control_acquire(pa_droid_volume_control *control, pa_bluetooth_transport *t) {
+static void volume_timer_stop(pa_droid_volume_control *control) {
+    pa_assert(control);
+
+    if (control->volume_time_event) {
+        control->core->mainloop->time_free(control->volume_time_event);
+        control->volume_time_event = NULL;
+    }
+}
+
+static void volume_time_cb(pa_mainloop_api *a, pa_time_event *e, const struct timeval *t, void *userdata) {
+    pa_droid_volume_control *control = userdata;
     pa_sink_input *si;
     uint32_t idx = 0;
 
+    volume_timer_stop(control);
+
+    if (control->transport) {
+        pa_log_debug("apply phone volume after acquire.");
+        PA_IDXSET_FOREACH(si, control->core->sink_inputs, idx)
+            if (pa_safe_streq(pa_proplist_gets(si->proplist, PA_PROP_MEDIA_ROLE), "phone"))
+                sink_input_volume_changed_cb(control->core, si, control);
+    }
+}
+
+static void volume_timer_start(pa_droid_volume_control *control) {
+    pa_assert(control);
+
+    volume_timer_stop(control);
+
+    control->volume_time_event = pa_core_rttime_new(control->core,
+                                                    pa_rtclock_now() + PA_USEC_PER_SEC,
+                                                    volume_time_cb, control);
+}
+
+void pa_droid_volume_control_acquire(pa_droid_volume_control *control, pa_bluetooth_transport *t) {
     pa_assert(control);
     pa_assert(t);
 
@@ -156,41 +185,40 @@ void pa_droid_volume_control_acquire(pa_droid_volume_control *control, pa_blueto
                                                               (pa_hook_cb_t) sink_input_volume_changed_cb,
                                                               control);
 
-    /* Apply currently active volume immediately. */
-    PA_IDXSET_FOREACH(si, control->core->sink_inputs, idx)
-        if (pa_safe_streq(pa_proplist_gets(si->proplist, PA_PROP_MEDIA_ROLE), "phone"))
-            sink_input_volume_changed_cb(control->core, si, control);
+    /* Apply currently active volume after a while. */
+    volume_timer_start(control);
 }
 
 void pa_droid_volume_control_release(pa_droid_volume_control *control) {
     pa_assert(control);
 
-    if (!control->sink_input_volume_changed_slot || !control->transport)
+    if (!control->transport)
         return;
 
     pa_log_debug("volume control release %s", pa_bluetooth_profile_to_string(control->transport->profile));
+    volume_timer_stop(control);
     pa_hook_slot_free(control->sink_input_volume_changed_slot);
     control->sink_input_volume_changed_slot = NULL;
     control->transport = NULL;
 }
 
 static DBusHandlerResult filter_cb(DBusConnection *bus, DBusMessage *m, void *data) {
-    DBusError err;
     pa_droid_volume_control *control = data;
 
     pa_assert(bus);
     pa_assert(m);
     pa_assert(control);
 
-    dbus_error_init(&err);
-
     if (dbus_message_is_signal(m, BT_VOLUME_INTERFACE, "PropertyChanged")) {
         DBusMessageIter arg_i, var_i;
         const char *p;
 
+        if (!control->transport)
+            goto done;
+
         if (!dbus_message_iter_init(m, &arg_i) || !pa_streq(dbus_message_get_signature(m), "sv")) {
             pa_log_error("Failed to parse " BT_VOLUME_INTERFACE ".PropertyChanged");
-            goto fail;
+            goto done;
         }
 
         dbus_message_iter_get_basic(&arg_i, &p);
@@ -240,8 +268,7 @@ static DBusHandlerResult filter_cb(DBusConnection *bus, DBusMessage *m, void *da
         }
     }
 
-fail:
-    dbus_error_free(&err);
+done:
     return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 }
 
@@ -250,15 +277,13 @@ static pa_hook_result_t transport_speaker_gain_changed_cb(pa_bluetooth_discovery
     pa_assert(t);
     pa_assert(control);
 
-    if (t->profile != PA_BLUETOOTH_PROFILE_DROID_HEADSET_HSP)
-        return PA_HOOK_OK;
-
-    headset_volume_changed(control, t->speaker_gain);
+    if (control->transport)
+        headset_volume_changed(control, t->speaker_gain);
 
     return PA_HOOK_OK;
 }
 
-pa_droid_volume_control *pa_droid_volume_control_new(pa_core *c, pa_bluetooth_discovery *y) {
+pa_droid_volume_control *pa_droid_volume_control_new(pa_core *c, pa_hook *speaker_gain_changed_hook) {
     pa_droid_volume_control *control;
     DBusError err;
 
@@ -266,7 +291,6 @@ pa_droid_volume_control *pa_droid_volume_control_new(pa_core *c, pa_bluetooth_di
 
     control = pa_xnew0(pa_droid_volume_control, 1);
     control->core = c;
-    control->discovery = y;
 
     dbus_error_init(&err);
 
@@ -296,7 +320,7 @@ pa_droid_volume_control *pa_droid_volume_control_new(pa_core *c, pa_bluetooth_di
     }
 
     control->transport_speaker_gain_changed_slot =
-        pa_hook_connect(pa_bluetooth_discovery_hook(y, PA_BLUETOOTH_HOOK_TRANSPORT_SPEAKER_GAIN_CHANGED), PA_HOOK_NORMAL, (pa_hook_cb_t) transport_speaker_gain_changed_cb, control);
+        pa_hook_connect(speaker_gain_changed_hook, PA_HOOK_NORMAL, (pa_hook_cb_t) transport_speaker_gain_changed_cb, control);
 
     return control;
 }
@@ -307,13 +331,14 @@ void pa_droid_volume_control_free(pa_droid_volume_control *control) {
     if (control->transport_speaker_gain_changed_slot)
         pa_hook_slot_free(control->transport_speaker_gain_changed_slot);
 
+    pa_droid_volume_control_release(control);
+
+    dbus_connection_remove_filter(pa_dbus_connection_get(control->connection), filter_cb, control);
+
     pa_dbus_remove_matches(pa_dbus_connection_get(control->connection),
             "type='signal',sender='" OFONO_SERVICE "',interface='" BT_VOLUME_INTERFACE "',member='PropertyChanged'",
             "type='signal',sender='" OFONO_SERVICE "',interface='" VOICECALL_MANAGER_INTERFACE "',member='CallAdded'",
             NULL);
-
-    pa_droid_volume_control_release(control);
-    dbus_connection_remove_filter(pa_dbus_connection_get(control->connection), filter_cb, control);
 
     pa_dbus_connection_unref(control->connection);
     pa_xfree(control->modem_path);

@@ -1,3 +1,195 @@
+PulseAudio 11.1
+
+A bug fix release.
+
+ * Fix a crash in filter modules related to flat volumes and volume sharing
+ * Fix a crash when the bluetooth adapter reports weird MTU size
+ * Disable bluetooth MTU autodetection by default
+ * Add mixer handling back for hardware that doesn't have any alsa-lib
+   configuration
+ * Prioritize USB devices over built-in sound cards (11.0 was supposed to have
+   this feature, but the implementation turned out to be incomplete)
+
+Contributors
+
+  Arun Raghavan
+  Tanu Kaskinen
+
+
+PulseAudio 11.0
+
+Changes at a glance:
+
+ * Support for newer AirPlay hardware
+ * USB and bluetooth devices preferred over internal sound cards
+ * Bluetooth HSP headset role implemented
+ * Bluetooth HFP audio gateway role implemented (requires oFono)
+ * Bluetooth HSP audio gateway and HFP hands-free unit roles can be enabled
+   simultaneously
+ * Upmixing can now be disabled without bad side effects
+ * Avoid having unavailable sinks or sources as the default
+ * Option to avoid resampling more often
+ * Option to automatically switch bluetooth profile to HSP more often
+ * Better latency control in module-loopback
+ * Changed module argument names in module-ladspa-sink and
+   module-virtual-surround-sink
+ * Fixed input device handling in module-waveout
+ * Improved bluetooth MTU configuration
+ * GNU Hurd support
+ * Applications can request LADSPA or virtual surround filtering for their
+   streams
+ * Support for 32-bit applications on 64-bit systems in padsp
+
+Detailed change log:
+
+  https://www.freedesktop.org/wiki/Software/PulseAudio/Notes/11.0/
+
+Contributors
+
+  Arun Raghavan
+  ced2c
+  Christian Kellner
+  Colin Leroy
+  Corentin Noël
+  David Mandelberg
+  David Michael
+  Denis Shulyaka
+  Felipe Sateler
+  Georg Chini
+  Grzegorz Kolodziejczyk
+  Hajime Fujita
+  Hui Wang
+  Imre Vadász
+  Jungsup Lee
+  Karl Ove Hufthammer
+  KimJeongYeon
+  Luiz Augusto von Dentz
+  Martin Blanchard
+  Matthias Wabersich
+  Mihai Moldovan
+  Milo Casagrande
+  Moo
+  Moritz Bruder
+  Muhammet Kara
+  muzena
+  Pali Rohár
+  Paul Seyfert
+  Peter Meerwald-Stadler
+  Philip Chimento
+  Piotr Drąg
+  Rafael Fontenelle
+  Renjith Thomas
+  Stephen Paul Weber
+  Takashi Sakamoto
+  Tanu Kaskinen
+  Ted Ying
+  Vadim Troshchinskiy
+  Wim Taymans
+  Yuri Chornoivan
+
+
+PulseAudio 10.0
+
+Changes at a glance:
+
+ * Automatically switch Bluetooth profile when using VoIP applications
+ * New module for prioritizing passthrough streams (module-allow-passthrough)
+ * Fix hotplugging support for USB surround sound cards
+ * Separate volumes for Bluetooth A2DP and HSP profiles
+ * memfd-based shared memory mechanism enabled by default
+ * Removed module-xenpv-sink
+ * Dropped dependency to json-c
+ * When using systemd to start PulseAudio, pulseaudio.socket is always started
+   first
+ * Compatibility with OpenSSL 1.1.0
+ * Clarified qpaeq license
+
+Detailed change log:
+
+  https://www.freedesktop.org/wiki/Software/PulseAudio/Notes/10.0/
+
+Contributors
+
+  Ahmed S. Darwish
+  Aidan Gauland
+  Alexander E. Patrakov
+  Anton Lundin
+  Arun Raghavan
+  Balázs Úr
+  Chris Billington
+  Cédric Valmary
+  Deepak Srivastava
+  Dušan Kazik
+  Felipe Sateler
+  Fran Dieguez
+  Georg Chini
+  Guillaume Desmottes
+  Jan Alexander Steffens
+  John Paul Adrian Glaubitz
+  Juha Kuikka
+  Juho Hämäläinen
+  KimJeongYeon
+  Marcin Lewandowski
+  Mario Blättermann
+  Moo
+  Nils Schneider
+  Pali Rohár
+  Peter Meerwald-Stadler
+  Philip Withnall
+  Pierre Ossman
+  Piotr Drąg
+  Rikard Söderström
+  Romain Naour
+  Sylvain Baubeau
+  Tanu Kaskinen
+  Ulrich Eckhardt
+  Viktar Vaŭčkievič
+
+
+PulseAudio 9.0
+
+Changes at a glance:
+
+ * Automatic routing improvements
+ * Beamforming and various other new features in the WebRTC echo canceller
+ * Various improvements in module-role-cork and module-role-ducking
+ * LFE remixing disabled by default
+ * memfd-backed shared memory transport
+ * Support for sample rates up to 384 kHz
+ * webrtc-audio-processing dependency minimum version bumped to 0.2
+ * Changed the C standard from C99 to C11.
+
+Detailed change log:
+
+  http://www.freedesktop.org/wiki/Software/PulseAudio/Notes/9.0
+
+Contributors
+
+  Ahmed S. Darwish
+  Alexander E. Patrakov
+  Arun Raghavan
+  Barun Kumar Singh
+  David Henningsson
+  Deepak Srivastava
+  Gabor Kelemen
+  Georg Chini
+  Jeremy Huddleston Sequoia
+  Jonathan Perkin
+  Juho Hämäläinen
+  Jungsup Lee
+  Kamil Rytarowski
+  Marcin Lewandowski
+  Milo Casagrande
+  Muhammet Kara
+  Nazar Mokrynskyi
+  Peter Meerwald
+  Piotr Drąg
+  Sachin Kumar Chauhan
+  Sangchul Lee
+  Tanu Kaskinen
+  YunQiang Su
+
+
 PulseAudio 8.0
 
 Changes at a glance:

@@ -513,12 +513,13 @@ static int sink_process_msg(pa_msgobject *o, int code, void *data, int64_t offse
         }
 
         case PA_SINK_MESSAGE_GET_LATENCY: {
-            pa_usec_t yl, yr, *usec = data;
+            pa_usec_t yl, yr;
+            int64_t *usec = data;
 
             yl = pa_bytes_to_usec((uint64_t) u->counter, &u->sink->sample_spec);
             yr = pa_smoother_get(u->smoother, pa_rtclock_now());
 
-            *usec = yl > yr ? yl - yr : 0;
+            *usec = (int64_t)yl - yr;
             return 0;
         }
 
@@ -618,12 +619,13 @@ static int source_process_msg(pa_msgobject *o, int code, void *data, int64_t off
         }
 
         case PA_SOURCE_MESSAGE_GET_LATENCY: {
-            pa_usec_t yr, yl, *usec = data;
+            pa_usec_t yr, yl;
+            int64_t *usec = data;
 
             yl = pa_bytes_to_usec((uint64_t) u->counter, &PA_SOURCE(o)->sample_spec);
             yr = pa_smoother_get(u->smoother, pa_rtclock_now());
 
-            *usec = yr > yl ? yr - yl : 0;
+            *usec = (int64_t)yr - yl;
             return 0;
         }
 
@@ -1778,7 +1780,7 @@ static void pstream_die_callback(pa_pstream *p, void *userdata) {
 }
 
 /* Called from main context */
-static void pstream_packet_callback(pa_pstream *p, pa_packet *packet, const pa_cmsg_ancil_data *ancil_data, void *userdata) {
+static void pstream_packet_callback(pa_pstream *p, pa_packet *packet, pa_cmsg_ancil_data *ancil_data, void *userdata) {
     struct userdata *u = userdata;
 
     pa_assert(p);
@@ -1968,7 +1970,11 @@ int pa__init(pa_module*m) {
     u->counter = u->counter_delta = 0;
 
     u->rtpoll = pa_rtpoll_new();
-    pa_thread_mq_init(&u->thread_mq, m->core->mainloop, u->rtpoll);
+
+    if (pa_thread_mq_init(&u->thread_mq, m->core->mainloop, u->rtpoll) < 0) {
+        pa_log("pa_thread_mq_init() failed.");
+        goto fail;
+    }
 
     if (pa_modargs_get_value_boolean(ma, "auto", &automatic) < 0) {
         pa_log("Failed to parse argument \"auto\".");

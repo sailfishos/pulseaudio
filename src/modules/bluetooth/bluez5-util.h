@@ -24,7 +24,14 @@
 
 #define PA_BLUETOOTH_UUID_A2DP_SOURCE "0000110a-0000-1000-8000-00805f9b34fb"
 #define PA_BLUETOOTH_UUID_A2DP_SINK   "0000110b-0000-1000-8000-00805f9b34fb"
+
+/* There are two HSP HS UUIDs. The first one (older?) is used both as the HSP
+ * profile identifier and as the HS role identifier, while the second one is
+ * only used to identify the role. As far as PulseAudio is concerned, the two
+ * UUIDs mean exactly the same thing. */
 #define PA_BLUETOOTH_UUID_HSP_HS      "00001108-0000-1000-8000-00805f9b34fb"
+#define PA_BLUETOOTH_UUID_HSP_HS_ALT  "00001131-0000-1000-8000-00805f9b34fb"
+
 #define PA_BLUETOOTH_UUID_HSP_AG      "00001112-0000-1000-8000-00805f9b34fb"
 #define PA_BLUETOOTH_UUID_HFP_HF      "0000111e-0000-1000-8000-00805f9b34fb"
 #define PA_BLUETOOTH_UUID_HFP_AG      "0000111f-0000-1000-8000-00805f9b34fb"
@@ -48,8 +55,6 @@ typedef enum profile {
     PA_BLUETOOTH_PROFILE_A2DP_SOURCE,
     PA_BLUETOOTH_PROFILE_HEADSET_HEAD_UNIT,
     PA_BLUETOOTH_PROFILE_HEADSET_AUDIO_GATEWAY,
-    PA_BLUETOOTH_PROFILE_DROID_HEADSET_HFP,
-    PA_BLUETOOTH_PROFILE_DROID_HEADSET_HSP,
     PA_BLUETOOTH_PROFILE_OFF
 } pa_bluetooth_profile_t;
 #define PA_BLUETOOTH_PROFILE_COUNT PA_BLUETOOTH_PROFILE_OFF
@@ -82,6 +87,7 @@ struct pa_bluetooth_transport {
 
     pa_bluetooth_transport_state_t state;
 
+    bool native;
     pa_bluetooth_transport_acquire_cb acquire;
     pa_bluetooth_transport_release_cb release;
     pa_bluetooth_transport_destroy_cb destroy;
@@ -97,6 +103,7 @@ struct pa_bluetooth_device {
     bool properties_received;
     bool tried_to_link_with_adapter;
     bool valid;
+    bool autodetect_mtu;
 
     /* Device information */
     char *path;
@@ -104,9 +111,11 @@ struct pa_bluetooth_device {
     char *alias;
     char *address;
     uint32_t class_of_device;
-    pa_hashmap *uuids;
+    pa_hashmap *uuids; /* char* -> char* (hashmap-as-a-set) */
 
     pa_bluetooth_transport *transports[PA_BLUETOOTH_PROFILE_COUNT];
+
+    pa_time_event *wait_for_profiles_timer;
 };
 
 struct pa_bluetooth_adapter {
@@ -128,24 +137,23 @@ static inline void pa_bluetooth_ofono_backend_free(pa_bluetooth_backend *b) {}
 #endif
 
 #ifdef HAVE_BLUEZ_5_NATIVE_HEADSET
-pa_bluetooth_backend *pa_bluetooth_native_backend_new(pa_core *c, pa_bluetooth_discovery *y);
+pa_bluetooth_backend *pa_bluetooth_native_backend_new(pa_core *c, pa_bluetooth_discovery *y, bool enable_hs_role);
 void pa_bluetooth_native_backend_free(pa_bluetooth_backend *b);
+void pa_bluetooth_native_backend_enable_hs_role(pa_bluetooth_backend *b, bool enable_hs_role);
 #else
-static inline pa_bluetooth_backend *pa_bluetooth_native_backend_new(pa_core *c, pa_bluetooth_discovery *y) {
+static inline pa_bluetooth_backend *pa_bluetooth_native_backend_new(pa_core *c, pa_bluetooth_discovery *y, bool enable_hs_role) {
     return NULL;
 }
 static inline void pa_bluetooth_native_backend_free(pa_bluetooth_backend *b) {}
+static inline void pa_bluetooth_native_backend_enable_hs_role(pa_bluetooth_backend *b, bool enable_hs_role) {}
 #endif
 
-typedef struct pa_droid_volume_control pa_droid_volume_control;
-pa_bluetooth_backend *pa_bluetooth_droid_backend_hfp_new(pa_core *c, pa_bluetooth_discovery *y, pa_droid_volume_control *v);
-void pa_bluetooth_droid_backend_hfp_free(pa_bluetooth_backend *b);
-pa_bluetooth_backend *pa_bluetooth_droid_backend_hsp_new(pa_core *c, pa_bluetooth_discovery *y, pa_droid_volume_control *v);
-void pa_bluetooth_droid_backend_hsp_free(pa_bluetooth_backend *b);
-pa_droid_volume_control *pa_droid_volume_control_new(pa_core *c, pa_bluetooth_discovery *y);
-void pa_droid_volume_control_free(pa_droid_volume_control *v);
-void pa_droid_volume_control_acquire(pa_droid_volume_control *backend, pa_bluetooth_transport *t);
-void pa_droid_volume_control_release(pa_droid_volume_control *backend);
+bool pa_bluetooth_droid_backend(pa_bluetooth_discovery *y);
+void pa_bluetooth_droid_volume_control_acquire(pa_bluetooth_discovery *y, pa_bluetooth_transport *t);
+void pa_bluetooth_droid_volume_control_release(pa_bluetooth_discovery *y);
+#ifdef HAVE_BLUEZ_5_NATIVE_HEADSET
+void pa_bluetooth_native_backend_ring(pa_bluetooth_transport *t, bool active);
+#endif
 
 pa_bluetooth_transport *pa_bluetooth_transport_new(pa_bluetooth_device *d, const char *owner, const char *path,
                                                    pa_bluetooth_profile_t p, const uint8_t *config, size_t size);
@@ -163,6 +171,10 @@ pa_bluetooth_device* pa_bluetooth_discovery_get_device_by_address(pa_bluetooth_d
 pa_hook* pa_bluetooth_discovery_hook(pa_bluetooth_discovery *y, pa_bluetooth_hook_t hook);
 
 const char *pa_bluetooth_profile_to_string(pa_bluetooth_profile_t profile);
+
+static inline bool pa_bluetooth_uuid_is_hsp_hs(const char *uuid) {
+    return pa_streq(uuid, PA_BLUETOOTH_UUID_HSP_HS) || pa_streq(uuid, PA_BLUETOOTH_UUID_HSP_HS_ALT);
+}
 
 #define HEADSET_BACKEND_OFONO 0
 #define HEADSET_BACKEND_NATIVE 1

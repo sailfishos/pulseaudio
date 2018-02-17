@@ -102,7 +102,7 @@ static int source_process_msg(pa_msgobject *o, int code, void *data, int64_t off
             pa_usec_t now;
 
             now = pa_rtclock_now();
-            *((pa_usec_t*) data) = u->timestamp > now ? u->timestamp - now : 0;
+            *((int64_t*) data) = (int64_t)u->timestamp - (int64_t)now;
 
             return 0;
         }
@@ -200,7 +200,11 @@ int pa__init(pa_module*m) {
     u->core = m->core;
     u->module = m;
     u->rtpoll = pa_rtpoll_new();
-    pa_thread_mq_init(&u->thread_mq, m->core->mainloop, u->rtpoll);
+
+    if (pa_thread_mq_init(&u->thread_mq, m->core->mainloop, u->rtpoll) < 0) {
+        pa_log("pa_thread_mq_init() failed.");
+        goto fail;
+    }
 
     pa_source_new_data_init(&data);
     data.driver = __FILE__;

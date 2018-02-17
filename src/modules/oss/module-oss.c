@@ -659,7 +659,7 @@ static int sink_process_msg(pa_msgobject *o, int code, void *data, int64_t offse
                     r = io_sink_get_latency(u);
             }
 
-            *((pa_usec_t*) data) = r;
+            *((int64_t*) data) = (int64_t)r;
 
             return 0;
         }
@@ -744,7 +744,7 @@ static int source_process_msg(pa_msgobject *o, int code, void *data, int64_t off
                     r = io_source_get_latency(u);
             }
 
-            *((pa_usec_t*) data) = r;
+            *((int64_t*) data) = (int64_t)r;
             return 0;
         }
 
@@ -1195,7 +1195,7 @@ int pa__init(pa_module*m) {
         goto fail;
     }
 
-    mode = (playback && record) ? O_RDWR : (playback ? O_WRONLY : (record ? O_RDONLY : 0));
+    mode = (playback && record) ? O_RDWR : (playback ? O_WRONLY : O_RDONLY);
 
     ss = m->core->default_sample_spec;
     map = m->core->default_channel_map;
@@ -1270,7 +1270,12 @@ int pa__init(pa_module*m) {
     u->orig_frag_size = orig_frag_size;
     u->use_mmap = use_mmap;
     u->rtpoll = pa_rtpoll_new();
-    pa_thread_mq_init(&u->thread_mq, m->core->mainloop, u->rtpoll);
+
+    if (pa_thread_mq_init(&u->thread_mq, m->core->mainloop, u->rtpoll) < 0) {
+        pa_log("pa_thread_mq_init() failed.");
+        goto fail;
+    }
+
     u->rtpoll_item = NULL;
     build_pollfd(u);
 

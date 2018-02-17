@@ -40,15 +40,15 @@ AC_SUBST(PA_MINOR, pa_minor)
 AC_SUBST(PA_MAJORMINOR, pa_major.pa_minor)
 
 AC_SUBST(PA_API_VERSION, 12)
-AC_SUBST(PA_PROTOCOL_VERSION, 30)
+AC_SUBST(PA_PROTOCOL_VERSION, 32)
 
 # The stable ABI for client applications, for the version info x:y:z
 # always will hold y=z
-AC_SUBST(LIBPULSE_VERSION_INFO, [19:0:19])
+AC_SUBST(LIBPULSE_VERSION_INFO, [20:2:20])
 
 # A simplified, synchronous, ABI-stable interface for client
 # applications, for the version info x:y:z always will hold y=z
-AC_SUBST(LIBPULSE_SIMPLE_VERSION_INFO, [1:0:1])
+AC_SUBST(LIBPULSE_SIMPLE_VERSION_INFO, [1:1:1])
 
 # The ABI-stable GLib adapter for client applications, for the version
 # info x:y:z always will hold y=z
@@ -80,11 +80,11 @@ AC_PROG_LN_S
 # CC
 
 AC_PROG_CC
-AC_PROG_CC_C99
 AM_PROG_CC_C_O
 # Only required if you want the WebRTC canceller -- no runtime dep on
 # libstdc++ otherwise
 AC_PROG_CXX
+AX_CXX_COMPILE_STDCXX_11([ext],[optional])
 AC_PROG_GCC_TRADITIONAL
 AC_USE_SYSTEM_EXTENSIONS
 
@@ -175,6 +175,11 @@ esac
 
 
 #### Compiler flags ####
+
+AX_CHECK_COMPILE_FLAG([-std=gnu11],
+   [],
+   [AC_MSG_ERROR([*** Compiler does not support -std=gnu11])],
+   [-pedantic -Werror])
 
 AX_APPEND_COMPILE_FLAGS(
     [-Wall -W -Wextra -pipe -Wno-long-long -Wno-overlength-strings -Wunsafe-loop-optimizations -Wundef -Wformat=2 -Wlogical-op -Wsign-compare -Wformat-security -Wmissing-include-dirs -Wformat-nonliteral -Wold-style-definition -Wpointer-arith -Winit-self -Wdeclaration-after-statement -Wfloat-equal -Wmissing-prototypes -Wstrict-prototypes -Wredundant-decls -Wmissing-declarations -Wmissing-noreturn -Wshadow -Wendif-labels -Wcast-align -Wstrict-aliasing -Wwrite-strings -Wno-unused-parameter -ffast-math -fno-common -fdiagnostics-show-option -fdiagnostics-color=auto],
@@ -431,7 +436,7 @@ AM_CONDITIONAL([HAVE_EVDEV], [test "x$HAVE_EVDEV" = "x1"])
 AC_CHECK_HEADERS_ONCE([sys/prctl.h])
 
 # Solaris
-AC_CHECK_HEADERS_ONCE([sys/filio.h])
+AC_CHECK_HEADERS_ONCE([sys/conf.h sys/filio.h])
 
 # Windows
 AC_CHECK_HEADERS_ONCE([windows.h winsock2.h ws2tcpip.h])
@@ -497,20 +502,6 @@ AC_CACHE_CHECK([whether $CC knows _Bool],
 AS_IF([test "$pulseaudio_cv__Bool" = "yes"], AC_DEFINE([HAVE_STD_BOOL], 1, [Have _Bool.]))
 
 
-#### Thread support ####
-
-AX_TLS
-AS_IF([test "$ac_cv_tls" = "__thread"],
-    AC_DEFINE([SUPPORT_TLS___THREAD], 1, [Define this if the compiler supports __thread for Thread-Local Storage]))
-
-# Win32 build breaks with win32 pthread installed
-AS_IF([test "x$os_is_win32" != "x1"],
-  [AX_PTHREAD])
-
-AS_IF([test "x$ax_pthread_ok" = "xyes"],
-    AC_DEFINE([_POSIX_PTHREAD_SEMANTICS], 1, [Needed on Solaris]))
-
-
 #### Check for libs ####
 
 # ISO
@@ -533,13 +524,9 @@ AC_SEARCH_LIBS([backtrace], [execinfo ubacktrace])
 # Darwin/OS X
 if test "x$os_is_darwin" = "x1" ; then
     AC_MSG_CHECKING([looking for Apple CoreService Framework])
-    # How do I check a framework "library" - AC_CHECK_LIB prob. won't work??, just assign LIBS & hope
-    AC_CHECK_HEADER([/Developer/Headers/FlatCarbon/CoreServices.h],
+    AC_CHECK_HEADER([CoreServices/CoreServices.h],
         [LIBS="$LIBS -framework CoreServices"],
-        [AC_CHECK_HEADERS([/System/Library/Frameworks/CoreServices.framework/Headers/CoreServices.h],
-            [LIBS="$LIBS -framework CoreServices"],
-            [AC_MSG_ERROR([CoreServices.h header file not found])]
-        )]
+        [AC_MSG_ERROR([CoreServices.h header file not found])]
     )
 
     AC_MSG_RESULT([ok])
@@ -607,6 +594,23 @@ AC_DEFINE(HAVE_DLADDR, [1], [Have dladdr?])
 
 AM_ICONV
 
+#### Linux memfd_create(2) SHM support ####
+
+AC_ARG_ENABLE([memfd],
+    AS_HELP_STRING([--disable-memfd], [Disable Linux memfd shared memory]))
+
+AS_IF([test "x$enable_memfd" != "xno"],
+    AC_CHECK_DECL(SYS_memfd_create, [HAVE_MEMFD=1], [HAVE_MEMFD=0], [#include <sys/syscall.h>]),
+    [HAVE_MEMFD=0])
+
+AS_IF([test "x$enable_memfd" = "xyes" && test "x$HAVE_MEMFD" = "x0"],
+    [AC_MSG_ERROR([*** Your Linux kernel does not support memfd shared memory.
+                  *** Use linux v3.17 or higher for such a feature.])])
+
+AC_SUBST(HAVE_MEMFD)
+AM_CONDITIONAL([HAVE_MEMFD], [test "x$HAVE_MEMFD" = x1])
+AS_IF([test "x$HAVE_MEMFD" = "x1"], AC_DEFINE([HAVE_MEMFD], 1, [Have memfd shared memory.]))
+
 #### X11 (optional) ####
 
 AC_ARG_ENABLE([x11],
@@ -650,17 +654,13 @@ AC_ARG_ENABLE([tests],
     AS_HELP_STRING([--disable-tests],[Disable unit tests]))
 
 AS_IF([test "x$enable_tests" != "xno"],
-    [PKG_CHECK_MODULES(LIBCHECK, [ check ], HAVE_LIBCHECK=1, HAVE_LIBCHECK=0)],
+    [PKG_CHECK_MODULES(LIBCHECK, [ check >= 0.9.10 ], HAVE_LIBCHECK=1, HAVE_LIBCHECK=0)],
     HAVE_LIBCHECK=0)
 
 AS_IF([test "x$enable_tests" = "xyes" && test "x$HAVE_LIBCHECK" = "x0"],
-    [AC_MSG_ERROR([*** check library not found])])
+    [AC_MSG_ERROR([*** check library not found or too old])])
 
 AM_CONDITIONAL([HAVE_TESTS], [test "x$HAVE_LIBCHECK" = x1])
-
-#### json parsing ####
-
-PKG_CHECK_MODULES(LIBJSON, [ json-c >= 0.11 ])
 
 #### Sound file ####
 
@@ -759,6 +759,9 @@ AC_ARG_ENABLE([oss-output],
 AC_ARG_ENABLE([oss-wrapper],
     AS_HELP_STRING([--disable-oss-wrapper],[Disable optional OSS wrapper support]))
 
+AC_ARG_WITH([pulsedsp-location],
+    AS_HELP_STRING([--with-pulsedsp-location],[Specify location where OSS wrapper will be installed]))
+
 AS_IF([test "x$enable_oss_output" != "xno" -o "x$enable_oss_wrapper" != "xno"],
     [AC_CHECK_HEADERS([sys/soundcard.h], HAVE_OSS=1, HAVE_OSS=0)],
     HAVE_OSS=0)
@@ -774,11 +777,23 @@ AS_IF([test "x$enable_oss_wrapper" != "xno"],
     [AS_IF([test "x$HAVE_OSS" = "x1"], HAVE_OSS_WRAPPER=1, HAVE_OSS_WRAPPER=0)],
     HAVE_OSS_WRAPPER=0)
 
+AS_IF([test "x$with_pulsedsp_location" != "x"],
+    [PULSEDSP_LOCATION="$with_pulsedsp_location"],
+    [PULSEDSP_LOCATION="\$(pkglibdir)"])
+
 AC_SUBST(HAVE_OSS_OUTPUT)
+AC_SUBST(PULSEDSP_LOCATION)
 AM_CONDITIONAL([HAVE_OSS_OUTPUT], [test "x$HAVE_OSS_OUTPUT" = "x1"])
 AM_CONDITIONAL([HAVE_OSS_WRAPPER], [test "x$HAVE_OSS_WRAPPER" = "x1"])
 AS_IF([test "x$HAVE_OSS_OUTPUT" = "x1"], AC_DEFINE([HAVE_OSS_OUTPUT], 1, [Have OSS output?]))
 AS_IF([test "x$HAVE_OSS_WRAPPER" = "x1"], AC_DEFINE([HAVE_OSS_WRAPPER], 1, [Have OSS wrapper (padsp)?]))
+
+# Some platforms like SunOS (Illumos) may ship without SOUND_PCM_* functionality
+if test "x$HAVE_OSS" = "x1"; then
+    AC_CHECK_DECLS([SOUND_PCM_READ_RATE], [], [], [[#include <sys/soundcard.h>]])
+    AC_CHECK_DECLS([SOUND_PCM_READ_CHANNELS], [], [], [[#include <sys/soundcard.h>]])
+    AC_CHECK_DECLS([SOUND_PCM_READ_BITS], [], [], [[#include <sys/soundcard.h>]])
+fi
 
 #### CoreAudio support (optional) ####
 
@@ -1169,30 +1184,6 @@ AS_IF([test "x$with_soxr" = "xyes" && test "x$HAVE_SOXR" = "x0"],
 AM_CONDITIONAL([HAVE_SOXR], [test "x$HAVE_SOXR" = "x1"])
 AS_IF([test "x$HAVE_SOXR" = "x1"], AC_DEFINE([HAVE_SOXR], 1, [Have soxr]))
 
-#### Xen support (optional) ####
-
-AC_ARG_ENABLE([xen],
-    AS_HELP_STRING([--disable-xen],[Disable optional Xen paravirtualized driver]))
-
-XEN_CFLAGS=
-XEN_LIBS=
-
-AS_IF([test "x$enable_xen" != "xno"],
-    [
-        HAVE_XEN=1
-        AC_CHECK_HEADER(xenctrl.h, [], [HAVE_XEN=0])
-        AC_CHECK_HEADER(xs.h, [], [HAVE_XEN=0])
-        AC_CHECK_LIB(xenctrl, xc_interface_open, [XEN_LIBS="$XEN_LIBS -lxenctrl"], [HAVE_XEN=0])
-        AC_CHECK_LIB(xenstore, xs_domain_open, [XEN_LIBS="$XEN_LIBS -lxenstore"], [HAVE_XEN=0])
-    ],
-    HAVE_XEN=0)
-
-AS_IF([test "x$enable_xen" = "xyes" && test "x$HAVE_XEN" = "x0"],
-    [AC_MSG_ERROR([*** Xen development headers or libraries not found])])
-
-AC_SUBST(XEN_CFLAGS)
-AC_SUBST(XEN_LIBS)
-AM_CONDITIONAL([HAVE_XEN], [test "x$HAVE_XEN" = x1])
 
 #### gcov support (optional) #####
 
@@ -1368,11 +1359,16 @@ AC_ARG_WITH(mac-version-min,
 
 AC_ARG_WITH(mac-sysroot,
     AS_HELP_STRING([--with-mac-sysroot=<path>], [SDK basedir to use as the logical root directory for headers and libraries.]),
-    mac_sysroot=$withval, mac_sysroot="/Developer/SDKs/MacOSX10.5.sdk")
+    mac_sysroot=$withval)
 
 if test "x$os_is_darwin" = "x1" ; then
-    LDFLAGS="$LDFLAGS -isysroot $mac_sysroot -mmacosx-version-min=$mac_version_min"
-    CFLAGS="$CFLAGS -isysroot $mac_sysroot -mmacosx-version-min=$mac_version_min"
+    LDFLAGS="$LDFLAGS -mmacosx-version-min=$mac_version_min"
+    CFLAGS="$CFLAGS -mmacosx-version-min=$mac_version_min"
+
+    if test "x$mac_sysroot" != "x" ; then
+        LDFLAGS="$LDFLAGS -isysroot $mac_sysroot"
+        CFLAGS="$CFLAGS -isysroot $mac_sysroot"
+    fi
 
     if test "x$enable_mac_universal" = "xyes" ; then
         mac_arches="-arch i386 -arch x86_64"
@@ -1384,8 +1380,11 @@ fi
 AC_ARG_ENABLE([webrtc-aec],
     AS_HELP_STRING([--enable-webrtc-aec], [Enable the optional WebRTC-based echo canceller]))
 
+AS_IF([test "x$enable_webrtc_aec" = "xyes" && test "$HAVE_CXX11" = "0"],
+    [AC_MSG_ERROR([*** webrtc-audio-processing needs C++11 support])])
+
 AS_IF([test "x$enable_webrtc_aec" != "xno"],
-    [PKG_CHECK_MODULES(WEBRTC, [ webrtc-audio-processing ], [HAVE_WEBRTC=1], [HAVE_WEBRTC=0])],
+    [PKG_CHECK_MODULES(WEBRTC, [ webrtc-audio-processing >= 0.2 ], [HAVE_WEBRTC=1], [HAVE_WEBRTC=0])],
     [HAVE_WEBRTC=0])
 
 AS_IF([test "x$enable_webrtc_aec" = "xyes" && test "x$HAVE_WEBRTC" = "x0"],
@@ -1398,6 +1397,20 @@ AC_ARG_ENABLE([adrian-aec],
 AS_IF([test "x$enable_adrian_aec" != "xno"],
     [HAVE_ADRIAN_EC=1])
 AM_CONDITIONAL([HAVE_ADRIAN_EC], [test "x$HAVE_ADRIAN_EC" = "x1"])
+
+
+#### Thread support ####
+
+AX_TLS
+AS_IF([test "$ac_cv_tls" = "__thread"],
+    AC_DEFINE([SUPPORT_TLS___THREAD], 1, [Define this if the compiler supports __thread for Thread-Local Storage]))
+
+# Win32 build breaks with win32 pthread installed
+AS_IF([test "x$os_is_win32" != "x1"],
+  [AX_PTHREAD])
+
+AS_IF([test "x$ax_pthread_ok" = "xyes"],
+    AC_DEFINE([_POSIX_PTHREAD_SEMANTICS], 1, [Needed on Solaris]))
 
 
 
@@ -1533,6 +1546,7 @@ AC_OUTPUT
 
 # ==========================================================================
 
+AS_IF([test "x$HAVE_MEMFD" = "x1"], ENABLE_MEMFD=yes, ENABLE_MEMFD=no)
 AS_IF([test "x$HAVE_X11" = "x1"], ENABLE_X11=yes, ENABLE_X11=no)
 AS_IF([test "x$HAVE_OSS_OUTPUT" = "x1"], ENABLE_OSS_OUTPUT=yes, ENABLE_OSS_OUTPUT=no)
 AS_IF([test "x$HAVE_OSS_WRAPPER" = "x1"], ENABLE_OSS_WRAPPER=yes, ENABLE_OSS_WRAPPER=no)
@@ -1547,7 +1561,6 @@ AS_IF([test "x$HAVE_AVAHI" = "x1"], ENABLE_AVAHI=yes, ENABLE_AVAHI=no)
 AS_IF([test "x$HAVE_JACK" = "x1"], ENABLE_JACK=yes, ENABLE_JACK=no)
 AS_IF([test "x$HAVE_LIBASYNCNS" = "x1"], ENABLE_LIBASYNCNS=yes, ENABLE_LIBASYNCNS=no)
 AS_IF([test "x$HAVE_LIRC" = "x1"], ENABLE_LIRC=yes, ENABLE_LIRC=no)
-AS_IF([test "x$HAVE_XEN" = "x1"], ENABLE_XEN=yes, ENABLE_XEN=no)
 AS_IF([test "x$HAVE_DBUS" = "x1"], ENABLE_DBUS=yes, ENABLE_DBUS=no)
 AS_IF([test "x$HAVE_UDEV" = "x1"], ENABLE_UDEV=yes, ENABLE_UDEV=no)
 AS_IF([test "x$HAVE_SYSTEMD_DAEMON" = "x1"], ENABLE_SYSTEMD_DAEMON=yes, ENABLE_SYSTEMD_DAEMON=no)
@@ -1594,6 +1607,7 @@ echo "
     CPPFLAGS:                      ${CPPFLAGS}
     LIBS:                          ${LIBS}
 
+    Enable memfd shared memory:    ${ENABLE_MEMFD}
     Enable X11:                    ${ENABLE_X11}
     Enable OSS Output:             ${ENABLE_OSS_OUTPUT}
     Enable OSS Wrapper:            ${ENABLE_OSS_WRAPPER}
@@ -1609,7 +1623,6 @@ echo "
     Enable Jack:                   ${ENABLE_JACK}
     Enable Async DNS:              ${ENABLE_LIBASYNCNS}
     Enable LIRC:                   ${ENABLE_LIRC}
-    Enable Xen PV driver:          ${ENABLE_XEN}
     Enable D-Bus:                  ${ENABLE_DBUS}
       Enable BlueZ 4:              ${ENABLE_BLUEZ_4}
       Enable BlueZ 5:              ${ENABLE_BLUEZ_5}

@@ -645,7 +645,7 @@ static void handle_add_entry(DBusConnection *conn, DBusMessage *msg, void *userd
         e->channel_map = map;
         e->volume_valid = !!map.channels;
 
-        device_updated = (e->device_valid != !!device[0]) || !pa_streq(e->device, device);
+        device_updated = (e->device_valid != !!device[0]) || !pa_safe_streq(e->device, device);
         pa_xfree(e->device);
         e->device = pa_xstrdup(device);
         e->device_valid = !!device[0];
@@ -757,7 +757,7 @@ static void handle_entry_set_device(DBusConnection *conn, DBusMessage *msg, DBus
 
     pa_assert_se(e = entry_read(de->userdata, de->entry_name));
 
-    updated = (e->device_valid != !!device[0]) || !pa_streq(e->device, device);
+    updated = (e->device_valid != !!device[0]) || !pa_safe_streq(e->device, device);
 
     if (updated) {
         pa_xfree(e->device);
@@ -1274,6 +1274,11 @@ static void subscribe_callback(pa_core *c, pa_subscription_event_type_t t, uint3
         if (!(sink_input = pa_idxset_get_by_index(c->sink_inputs, idx)))
             return;
 
+        /* Ignore this sink input if it is connecting a filter sink to
+         * the master */
+        if (sink_input->origin_sink)
+            return;
+
         if (!(name = pa_proplist_get_stream_group(sink_input->proplist, "sink-input", IDENTIFICATION_PROPERTY)))
             return;
 
@@ -1322,6 +1327,11 @@ static void subscribe_callback(pa_core *c, pa_subscription_event_type_t t, uint3
         pa_assert((t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SOURCE_OUTPUT);
 
         if (!(source_output = pa_idxset_get_by_index(c->source_outputs, idx)))
+            return;
+
+        /* Ignore this source output if it is connecting a filter source to
+         * the master */
+        if (source_output->destination_source)
             return;
 
         if (!(name = pa_proplist_get_stream_group(source_output->proplist, "source-output", IDENTIFICATION_PROPERTY)))
@@ -1422,6 +1432,8 @@ static pa_hook_result_t sink_input_new_hook_callback(pa_core *c, pa_sink_input_n
 
     if (new_data->sink)
         pa_log_debug("Not restoring device for stream %s, because already set to '%s'.", name, new_data->sink->name);
+    else if (new_data->origin_sink)
+        pa_log_debug("Not restoring device for stream %s, because it connects a filter to the master sink.", name);
     else if ((e = entry_read(u, name))) {
         pa_sink *s = NULL;
 
@@ -1461,6 +1473,11 @@ static pa_hook_result_t sink_input_fixate_hook_callback(pa_core *c, pa_sink_inpu
 
     if (!(name = pa_proplist_get_stream_group(new_data->proplist, "sink-input", IDENTIFICATION_PROPERTY)))
         return PA_HOOK_OK;
+
+    if (new_data->origin_sink) {
+        pa_log_debug("Not restoring volume for sink input %s, because it connects a filter to the master sink.", name);
+        return PA_HOOK_OK;
+    }
 
     if ((e = entry_read(u, name))) {
 
@@ -1518,6 +1535,8 @@ static pa_hook_result_t source_output_new_hook_callback(pa_core *c, pa_source_ou
 
     if (new_data->source)
         pa_log_debug("Not restoring device for stream %s, because already set", name);
+    else if (new_data->destination_source)
+        pa_log_debug("Not restoring device for stream %s, because it connects a filter to the master source.", name);
     else if ((e = entry_read(u, name))) {
         pa_source *s = NULL;
 
@@ -1558,6 +1577,11 @@ static pa_hook_result_t source_output_fixate_hook_callback(pa_core *c, pa_source
 
     if (!(name = pa_proplist_get_stream_group(new_data->proplist, "source-output", IDENTIFICATION_PROPERTY)))
         return PA_HOOK_OK;
+
+    if (new_data->destination_source) {
+        pa_log_debug("Not restoring volume for source output %s, because it connects a filter to the master source.", name);
+        return PA_HOOK_OK;
+    }
 
     if ((e = entry_read(u, name))) {
 
@@ -1622,6 +1646,11 @@ static pa_hook_result_t sink_put_hook_callback(pa_core *c, pa_sink *sink, struct
         if (!si->sink)
             continue;
 
+        /* Skip this sink input if it is connecting a filter sink to
+         * the master */
+        if (si->origin_sink)
+            continue;
+
         /* It might happen that a stream and a sink are set up at the
            same time, in which case we want to make sure we don't
            interfere with that */
@@ -1670,6 +1699,11 @@ static pa_hook_result_t source_put_hook_callback(pa_core *c, pa_source *source, 
         if (!so->source)
             continue;
 
+        /* Skip this source output if it is connecting a filter source to
+         * the master */
+        if (so->destination_source)
+            continue;
+
         /* It might happen that a stream and a source are set up at the
            same time, in which case we want to make sure we don't
            interfere with that */
@@ -1710,6 +1744,11 @@ static pa_hook_result_t sink_unlink_hook_callback(pa_core *c, pa_sink *sink, str
         struct entry *e;
 
         if (!si->sink)
+            continue;
+
+        /* Skip this sink input if it is connecting a filter sink to
+         * the master */
+        if (si->origin_sink)
             continue;
 
         if (!(name = pa_proplist_get_stream_group(si->proplist, "sink-input", IDENTIFICATION_PROPERTY)))
@@ -1756,6 +1795,11 @@ static pa_hook_result_t source_unlink_hook_callback(pa_core *c, pa_source *sourc
             continue;
 
         if (!so->source)
+            continue;
+
+        /* Skip this source output if it is connecting a filter source to
+         * the master */
+        if (so->destination_source)
             continue;
 
         if (!(name = pa_proplist_get_stream_group(so->proplist, "source-output", IDENTIFICATION_PROPERTY)))
@@ -2341,7 +2385,7 @@ static void clean_up_db(struct userdata *u) {
     PA_LLIST_FOREACH_SAFE(item, next, to_be_converted) {
         pa_log_debug("Upgrading a legacy entry to the current format: %s", item->entry_name);
 
-        pa_assert_se(entry_write(u, item->entry_name, item->entry, true) >= 0);
+        pa_assert_se(entry_write(u, item->entry_name, item->entry, true));
         trigger_save(u);
 
         PA_LLIST_REMOVE(struct clean_up_item, to_be_converted, item);

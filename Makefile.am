@@ -16,7 +16,9 @@
 ACLOCAL_AMFLAGS = -I m4
 
 EXTRA_DIST = \
+	AGPL \
 	bootstrap.sh \
+	coverity/model.c \
 	git-version-gen \
 	LICENSE \
 	pulseaudio.supp \
