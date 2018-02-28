@@ -1667,19 +1667,8 @@ static int add_sink(struct userdata *u) {
         }
         connect_ports(u, &data, PA_DIRECTION_OUTPUT);
 
-        if (!u->transport_acquired)
-            switch (u->profile) {
-                case PA_BLUEZ4_PROFILE_A2DP_SINK:
-                case PA_BLUEZ4_PROFILE_HEADSET_HEAD_UNIT:
-                    pa_assert_not_reached(); /* Profile switch should have failed */
-                    break;
-                case PA_BLUEZ4_PROFILE_HEADSET_AUDIO_GATEWAY:
-                    data.suspend_cause = PA_SUSPEND_USER;
-                    break;
-                case PA_BLUEZ4_PROFILE_A2DP_SOURCE:
-                case PA_BLUEZ4_PROFILE_OFF:
-                    pa_assert_not_reached();
-            }
+        if (!u->transport_acquired && u->profile == PA_BLUEZ4_PROFILE_HEADSET_AUDIO_GATEWAY)
+            data.suspend_cause |= PA_SUSPEND_USER;
 
         u->sink = pa_sink_new(u->core, &data, PA_SINK_HARDWARE|PA_SINK_LATENCY);
         pa_sink_new_data_done(&data);
@@ -1745,19 +1734,8 @@ static int add_source(struct userdata *u) {
 
         connect_ports(u, &data, PA_DIRECTION_INPUT);
 
-        if (!u->transport_acquired)
-            switch (u->profile) {
-                case PA_BLUEZ4_PROFILE_HEADSET_HEAD_UNIT:
-                    pa_assert_not_reached(); /* Profile switch should have failed */
-                    break;
-                case PA_BLUEZ4_PROFILE_A2DP_SOURCE:
-                case PA_BLUEZ4_PROFILE_HEADSET_AUDIO_GATEWAY:
-                    data.suspend_cause = PA_SUSPEND_USER;
-                    break;
-                case PA_BLUEZ4_PROFILE_A2DP_SINK:
-                case PA_BLUEZ4_PROFILE_OFF:
-                    pa_assert_not_reached();
-            }
+        if (!u->transport_acquired && u->profile == PA_BLUEZ4_PROFILE_HEADSET_AUDIO_GATEWAY)
+            data.suspend_cause |= PA_SUSPEND_USER;
 
         u->source = pa_source_new(u->core, &data, PA_SOURCE_HARDWARE|PA_SOURCE_LATENCY);
         pa_source_new_data_done(&data);
