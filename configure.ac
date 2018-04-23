@@ -34,8 +34,8 @@ AS_IF([! test -n "$VERSION"], [
    AC_MSG_ERROR([git-version-gen failed])
 ])
 
-m4_define(pa_major, `echo $VERSION | cut -d. -f1 | cut -d- -f1`)
-m4_define(pa_minor, `echo $VERSION | cut -d. -f2 | cut -d- -f1`)
+m4_define(pa_major, `echo $VERSION | cut -d. -f1 | cut -d- -f1 | cut -d+ -f1`)
+m4_define(pa_minor, `echo $VERSION | cut -d. -f2 | cut -d- -f1 | cut -d+ -f1`)
 
 AC_SUBST(PA_MAJOR, pa_major)
 AC_SUBST(PA_MINOR, pa_minor)
