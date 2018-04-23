@@ -92,7 +92,7 @@ Makes PulseAudio a drop-in replacement for ESound.
 %setup -q -n %{name}-%{version}
 
 %build
-echo "%{pulseversion}" > .tarball-version
+echo "%{version}" > .tarball-version
 NOCONFIGURE=1 ./bootstrap.sh
 
 %ifarch %{arm}
