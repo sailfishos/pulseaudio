@@ -13,8 +13,8 @@ pa_version_str = meson.project_version()
 # split out suffixes when there are commits since the last tag
 # (e.g.: v11.99.1-3-gad14bdb24 -> v11.99.1)
 version_split = pa_version_str.split('-')[0].split('.')
-pa_version_major = version_split[0].split('v')[0]
-pa_version_minor = version_split[1]
+pa_version_major = version_split[0].split('v')[0].split('+')[0]
+pa_version_minor = version_split[1].split('+')[0]
 if version_split.length() > 2
   pa_version_micro = version_split[2]
 else
