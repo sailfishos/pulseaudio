@@ -1125,9 +1125,6 @@ static DBusHandlerResult filter_cb(DBusConnection *bus, DBusMessage *m, void *us
         if (pa_streq(name, BLUEZ_SERVICE)) {
             if (old_owner && *old_owner) {
                 pa_log_debug("Bluetooth daemon disappeared");
-                pa_hashmap_remove_all(y->devices);
-                pa_hashmap_remove_all(y->adapters);
-                y->objects_listed = false;
                 if (y->ofono_backend) {
                     pa_bluetooth_ofono_backend_free(y->ofono_backend);
                     y->ofono_backend = NULL;
@@ -1136,6 +1133,9 @@ static DBusHandlerResult filter_cb(DBusConnection *bus, DBusMessage *m, void *us
                     pa_bluetooth_native_backend_free(y->native_backend);
                     y->native_backend = NULL;
                 }
+                pa_hashmap_remove_all(y->devices);
+                pa_hashmap_remove_all(y->adapters);
+                y->objects_listed = false;
             }
 
             if (new_owner && *new_owner) {
