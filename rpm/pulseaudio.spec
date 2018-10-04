@@ -79,14 +79,6 @@ Requires:   %{name} = %{version}-%{release}
 %description devel
 Description: %{summary}
 
-%package esound
-Summary:    ESound compatibility
-Group:      Multimedia/PulseAudio
-Requires:   %{name} = %{version}-%{release}
-
-%description esound
-Makes PulseAudio a drop-in replacement for ESound.
-
 %prep
 %setup -q -n %{name}-%{version}
 
@@ -99,22 +91,18 @@ export CFLAGS="$CFLAGS -mfpu=neon"
 export CXXFLAGS="$CXXFLAGS -mfpu=neon"
 %endif
 
+%configure --disable-static \
 %if %{with X11}
-%configure --disable-static \
-    --disable-openssl \
-%ifarch %{arm}
-    --enable-neon-opt \
-%endif
-    --disable-gconf
+           --enable-x11 \
 %else
-%configure --disable-static \
-    --disable-openssl \
+           --disable-x11 \
+%endif
 %ifarch %{arm}
-    --enable-neon-opt \
+           --enable-neon-opt \
 %endif
-    --disable-gconf \
-    --disable-x11
-%endif
+           --disable-openssl \
+           --disable-gconf \
+           --disable-esound
 
 make %{?jobs:-j%jobs}
 
@@ -225,7 +213,6 @@ install -m 644 %{SOURCE4} %{buildroot}/%{_sysconfdir}/pulse/client.conf.d
 %{_libdir}/pulse-%{pulseversion}/modules/module-device-manager.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-device-restore.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-echo-cancel.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-esound-sink.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-filter-apply.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-filter-heuristics.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-hal-detect.so
@@ -279,6 +266,8 @@ install -m 644 %{SOURCE4} %{buildroot}/%{_sysconfdir}/pulse/client.conf.d
 %{_datadir}/pulseaudio/alsa-mixer/paths/*.conf
 %{_datadir}/pulseaudio/alsa-mixer/paths/*.common
 %{_datadir}/pulseaudio/alsa-mixer/profile-sets/*.conf
+%exclude %doc %{_mandir}/man1/esdcompat.1.gz
+%exclude %{_bindir}/esdcompat
 
 %if %{with X11}
 %files module-x11
@@ -312,13 +301,3 @@ install -m 644 %{SOURCE4} %{buildroot}/%{_sysconfdir}/pulse/client.conf.d
 %{_libdir}/pkgconfig/*.pc
 %{_datadir}/vala/vapi/*.deps
 %{_datadir}/vala/vapi/*.vapi
-
-%files esound
-%defattr(-,root,root,-)
-%doc %{_mandir}/man1/esdcompat.1.gz
-%{_bindir}/esdcompat
-%{_libdir}/pulse-%{pulseversion}/modules/libprotocol-esound.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-esound-compat-spawnfd.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-esound-compat-spawnpid.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-esound-protocol-tcp.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-esound-protocol-unix.so
