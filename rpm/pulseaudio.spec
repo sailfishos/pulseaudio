@@ -134,20 +134,9 @@ install -m 644 %{SOURCE4} %{buildroot}/%{_sysconfdir}/pulse/client.conf.d
 %files -f pulseaudio.lang
 %defattr(-,root,root,-)
 %doc GPL LGPL LICENSE README
-%doc %{_mandir}/man1/pacat.1.gz
-%doc %{_mandir}/man1/pacmd.1.gz
-%doc %{_mandir}/man1/pactl.1.gz
-%doc %{_mandir}/man1/padsp.1.gz
-%doc %{_mandir}/man1/paplay.1.gz
-%doc %{_mandir}/man1/pamon.1.gz
-%doc %{_mandir}/man1/parec.1.gz
-%doc %{_mandir}/man1/parecord.1.gz
-%doc %{_mandir}/man1/pasuspender.1.gz
-%doc %{_mandir}/man1/pulseaudio.1.gz
-%doc %{_mandir}/man5/*.5.gz
 %if ! %{with X11}
-%exclude %{_mandir}/man1/start-pulseaudio-x11.1.gz
-%exclude %{_mandir}/man1/pax11publish.1.gz
+%exclude %doc %{_mandir}/man1/start-pulseaudio-x11.1.gz
+%exclude %doc %{_mandir}/man1/pax11publish.1.gz
 %endif
 %exclude %{_sysconfdir}/dbus-1/system.d/pulseaudio-system.conf
 %config(noreplace) %{_sysconfdir}/pulse/*.conf
@@ -285,6 +274,17 @@ install -m 644 %{SOURCE4} %{buildroot}/%{_sysconfdir}/pulse/client.conf.d
 
 %files devel
 %defattr(-,root,root,-)
+%doc %{_mandir}/man1/pacat.1.gz
+%doc %{_mandir}/man1/pacmd.1.gz
+%doc %{_mandir}/man1/pactl.1.gz
+%doc %{_mandir}/man1/padsp.1.gz
+%doc %{_mandir}/man1/paplay.1.gz
+%doc %{_mandir}/man1/pamon.1.gz
+%doc %{_mandir}/man1/parec.1.gz
+%doc %{_mandir}/man1/parecord.1.gz
+%doc %{_mandir}/man1/pasuspender.1.gz
+%doc %{_mandir}/man1/pulseaudio.1.gz
+%doc %{_mandir}/man5/*.5.gz
 %dir %{_includedir}/pulse
 %dir %{_includedir}/pulsecore
 %dir %{_includedir}/pulsecore/filter
