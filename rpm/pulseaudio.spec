@@ -79,6 +79,14 @@ Requires:   %{name} = %{version}-%{release}
 %description devel
 Description: %{summary}
 
+%package doc
+Summary:   Documentation for %{name}
+Group:     Documentation
+Requires:  %{name} = %{version}-%{release}
+
+%description doc
+Man pages for %{name}.
+
 %prep
 %setup -q -n %{name}-%{version}
 
@@ -122,6 +130,9 @@ install -m 644 %{SOURCE3} %{buildroot}/%{_sysconfdir}/pulse/daemon.conf.d
 install -d %{buildroot}/%{_sysconfdir}/pulse/client.conf.d
 install -m 644 %{SOURCE4} %{buildroot}/%{_sysconfdir}/pulse/client.conf.d
 
+mkdir -p %{buildroot}%{_docdir}/%{name}-%{version}
+install -m0644 README %{buildroot}%{_docdir}/%{name}-%{version}
+
 %find_lang pulseaudio
 
 %fdupes  %{buildroot}/%{_datadir}
@@ -133,10 +144,8 @@ install -m 644 %{SOURCE4} %{buildroot}/%{_sysconfdir}/pulse/client.conf.d
 
 %files -f pulseaudio.lang
 %defattr(-,root,root,-)
-%doc GPL LGPL LICENSE README
+%license GPL LGPL LICENSE
 %if ! %{with X11}
-%exclude %doc %{_mandir}/man1/start-pulseaudio-x11.1.gz
-%exclude %doc %{_mandir}/man1/pax11publish.1.gz
 %endif
 %exclude %{_sysconfdir}/dbus-1/system.d/pulseaudio-system.conf
 %config(noreplace) %{_sysconfdir}/pulse/*.conf
@@ -255,14 +264,11 @@ install -m 644 %{SOURCE4} %{buildroot}/%{_sysconfdir}/pulse/client.conf.d
 %{_datadir}/pulseaudio/alsa-mixer/paths/*.conf
 %{_datadir}/pulseaudio/alsa-mixer/paths/*.common
 %{_datadir}/pulseaudio/alsa-mixer/profile-sets/*.conf
-%exclude %doc %{_mandir}/man1/esdcompat.1.gz
 %exclude %{_bindir}/esdcompat
 
 %if %{with X11}
 %files module-x11
 %defattr(-,root,root,-)
-%doc %{_mandir}/man1/pax11publish.1.gz
-%doc %{_mandir}/man1/start-pulseaudio-x11.1.gz
 %config %{_sysconfdir}/xdg/autostart/pulseaudio.desktop
 %{_bindir}/pax11publish
 %{_bindir}/start-pulseaudio-x11
@@ -274,17 +280,6 @@ install -m 644 %{SOURCE4} %{buildroot}/%{_sysconfdir}/pulse/client.conf.d
 
 %files devel
 %defattr(-,root,root,-)
-%doc %{_mandir}/man1/pacat.1.gz
-%doc %{_mandir}/man1/pacmd.1.gz
-%doc %{_mandir}/man1/pactl.1.gz
-%doc %{_mandir}/man1/padsp.1.gz
-%doc %{_mandir}/man1/paplay.1.gz
-%doc %{_mandir}/man1/pamon.1.gz
-%doc %{_mandir}/man1/parec.1.gz
-%doc %{_mandir}/man1/parecord.1.gz
-%doc %{_mandir}/man1/pasuspender.1.gz
-%doc %{_mandir}/man1/pulseaudio.1.gz
-%doc %{_mandir}/man5/*.5.gz
 %dir %{_includedir}/pulse
 %dir %{_includedir}/pulsecore
 %dir %{_includedir}/pulsecore/filter
@@ -301,3 +296,11 @@ install -m 644 %{SOURCE4} %{buildroot}/%{_sysconfdir}/pulse/client.conf.d
 %{_libdir}/pkgconfig/*.pc
 %{_datadir}/vala/vapi/*.deps
 %{_datadir}/vala/vapi/*.vapi
+
+%files doc
+%defattr(-,root,root,-)
+%{_mandir}/man1/p*
+%{_mandir}/man1/start-pulseaudio-x11.1.gz
+%{_mandir}/man5/*.*
+%exclude %{_mandir}/man1/esdcompat.1.gz
+%{_docdir}/%{name}-%{version}
