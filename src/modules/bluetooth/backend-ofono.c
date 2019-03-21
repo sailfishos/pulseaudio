@@ -229,6 +229,7 @@ static int hf_audio_agent_transport_acquire(pa_bluetooth_transport *t, bool opti
             }
 
             card->state = HF_AUDIO_CARD_DISCONNECTED;
+            pa_log_debug("transport acquire failed, return -1");
             dbus_error_free(&derr);
             return -1;
         }
@@ -237,6 +238,7 @@ static int hf_audio_agent_transport_acquire(pa_bluetooth_transport *t, bool opti
         r = NULL;
 
         if (card->state == HF_AUDIO_CARD_CONNECTING) {
+            pa_log_debug("deferred setup, leave with -EAGAIN");
             return -EAGAIN;
         }
     }
@@ -263,6 +265,8 @@ static int hf_audio_agent_transport_acquire(pa_bluetooth_transport *t, bool opti
     }
 
     card->state = HF_AUDIO_CARD_CONNECTED;
+
+    pa_log_debug("Leave with fd %d", card->fd);
 
     return card->fd;
 }
