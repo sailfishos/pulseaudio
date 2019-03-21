@@ -2471,6 +2471,19 @@ static pa_hook_result_t transport_state_changed_cb(pa_bluetooth_discovery *y, pa
     if (t == u->transport && t->state <= PA_BLUETOOTH_TRANSPORT_STATE_DISCONNECTED)
         pa_assert_se(pa_card_set_profile(u->card, pa_hashmap_get(u->card->profiles, "off"), false) >= 0);
 
+    if (!u->transport &&
+        u->profile == PA_BLUETOOTH_PROFILE_OFF &&
+        t->state == PA_BLUETOOTH_TRANSPORT_STATE_PLAYING) {
+
+        pa_log_debug("transport state changed without our initiate");
+        if (t->profile != PA_BLUETOOTH_PROFILE_A2DP_SINK &&
+            t->profile != PA_BLUETOOTH_PROFILE_A2DP_SOURCE) {
+
+            pa_log_debug("set card profile to %s", pa_bluetooth_profile_to_string(t->profile));
+            pa_card_set_profile(u->card, pa_hashmap_get(u->card->profiles, pa_bluetooth_profile_to_string(t->profile)), false);
+        }
+    }
+
     if (t->device == u->device)
         handle_transport_state_change(u, t);
 
