@@ -202,6 +202,7 @@ static int card_connect(struct hf_audio_card *card) {
             return -EAGAIN;
         }
 
+        pa_log_debug("Card connect failed, return -1");
         dbus_error_free(&err);
         return -1;
     }
