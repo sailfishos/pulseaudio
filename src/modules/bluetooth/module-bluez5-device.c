@@ -673,6 +673,15 @@ static void transport_release(struct userdata *u) {
      * the file descriptor. Only do this when called from the I/O thread */
     if (pa_thread_mq_get() != NULL && u->transport->state == PA_BLUETOOTH_TRANSPORT_STATE_PLAYING)
         pa_asyncmsgq_post(pa_thread_mq_get()->outq, PA_MSGOBJECT(u->msg), BLUETOOTH_MESSAGE_STREAM_FD_HUP, NULL, 0, NULL, NULL);
+
+    if (pa_bluetooth_droid_backend(u->discovery) &&
+        u->transport->state > PA_BLUETOOTH_TRANSPORT_STATE_IDLE &&
+        u->transport->profile != PA_BLUETOOTH_PROFILE_A2DP_SINK &&
+        u->transport->profile != PA_BLUETOOTH_PROFILE_A2DP_SOURCE) {
+
+        pa_log_debug("Set droid HSP/HFP transport to IDLE");
+        pa_bluetooth_transport_set_state(u->transport, PA_BLUETOOTH_TRANSPORT_STATE_IDLE);
+    }
 }
 
 /* Run from I/O thread */
