@@ -59,13 +59,19 @@
     "  </interface>"                                                \
     "</node>"
 
+enum hf_audio_card_state {
+    HF_AUDIO_CARD_DISCONNECTED,
+    HF_AUDIO_CARD_CONNECTING,
+    HF_AUDIO_CARD_CONNECTED,
+};
+
 struct hf_audio_card {
     pa_bluetooth_backend *backend;
     char *path;
     char *remote_address;
     char *local_address;
 
-    bool connecting;
+    enum hf_audio_card_state state;
     int fd;
     uint8_t codec;
 
@@ -160,10 +166,10 @@ static int hf_audio_agent_transport_acquire(pa_bluetooth_transport *t, bool opti
         DBusMessage *m, *r;
         DBusError derr;
 
-        if (card->connecting)
+        if (card->state == HF_AUDIO_CARD_CONNECTING)
             return -EAGAIN;
 
-        card->connecting = true;
+        card->state = HF_AUDIO_CARD_CONNECTING;
 
         dbus_error_init(&derr);
         pa_assert_se(m = dbus_message_new_method_call(t->owner, t->path, "org.ofono.HandsfreeAudioCard", "Connect"));
@@ -171,14 +177,19 @@ static int hf_audio_agent_transport_acquire(pa_bluetooth_transport *t, bool opti
         dbus_message_unref(m);
         m = NULL;
 
-        if (!r)
+        if (!r) {
+            pa_log_debug("transport acquire error: %s:%s",derr.name, derr.message);
+            card->state = HF_AUDIO_CARD_DISCONNECTED;
+            dbus_error_free(&derr);
             return -1;
+        }
 
         dbus_message_unref(r);
         r = NULL;
 
-        if (card->connecting)
+        if (card->state == HF_AUDIO_CARD_CONNECTING) {
             return -EAGAIN;
+        }
     }
 
     /* The correct block size should take into account the SCO MTU from
@@ -196,8 +207,11 @@ static int hf_audio_agent_transport_acquire(pa_bluetooth_transport *t, bool opti
     err = socket_accept(card->fd);
     if (err < 0) {
         pa_log_error("Deferred setup failed on fd %d: %s", card->fd, pa_cstrerror(-err));
+        card->state = HF_AUDIO_CARD_DISCONNECTED;
         return -1;
     }
+
+    card->state = HF_AUDIO_CARD_CONNECTED;
 
     return card->fd;
 }
@@ -547,15 +561,20 @@ static DBusMessage *hf_audio_agent_new_connection(DBusConnection *c, DBusMessage
 
     card = pa_hashmap_get(backend->cards, path);
 
-    card->connecting = false;
+    if (card && card->state == HF_AUDIO_CARD_DISCONNECTED)
+        pa_log_debug("oFono initiated connection");
 
     if (!card || codec != HFP_AUDIO_CODEC_CVSD || card->fd >= 0) {
         pa_log_warn("New audio connection invalid arguments (path=%s fd=%d, codec=%d)", path, fd, codec);
         pa_assert_se(r = dbus_message_new_error(m, "org.ofono.Error.InvalidArguments", "Invalid arguments in method call"));
         shutdown(fd, SHUT_RDWR);
         close(fd);
+        if (card)
+            card->state = HF_AUDIO_CARD_DISCONNECTED;
         return r;
     }
+
+    card->state = HF_AUDIO_CARD_CONNECTED;
 
     pa_log_debug("New audio connection on card %s (fd=%d, codec=%d)", path, fd, codec);
 
