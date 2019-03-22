@@ -191,6 +191,7 @@ install -m0644 README %{buildroot}%{_docdir}/%{name}-%{version}
 %{_libdir}/pulse-%{pulseversion}/modules/module-alsa-sink.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-alsa-source.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-always-sink.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-always-source.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-augment-properties.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-bluetooth-discover.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-bluetooth-policy.so
@@ -213,6 +214,7 @@ install -m0644 README %{buildroot}%{_docdir}/%{name}-%{version}
 %{_libdir}/pulse-%{pulseversion}/modules/module-echo-cancel.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-filter-apply.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-filter-heuristics.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-gsettings.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-hal-detect.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-http-protocol-tcp.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-http-protocol-unix.so
@@ -264,7 +266,10 @@ install -m0644 README %{buildroot}%{_docdir}/%{name}-%{version}
 %{_datadir}/pulseaudio/alsa-mixer/paths/*.conf
 %{_datadir}/pulseaudio/alsa-mixer/paths/*.common
 %{_datadir}/pulseaudio/alsa-mixer/profile-sets/*.conf
-%exclude %{_bindir}/esdcompat
+%dir %{_libexecdir}/pulse
+%{_libexecdir}/pulse/gsettings-helper
+%{_datadir}/GConf/gsettings/pulseaudio.convert
+%{_datadir}/glib-2.0/schemas/org.freedesktop.pulseaudio.gschema.xml
 
 %if %{with X11}
 %files module-x11
@@ -302,5 +307,4 @@ install -m0644 README %{buildroot}%{_docdir}/%{name}-%{version}
 %{_mandir}/man1/p*
 %{_mandir}/man1/start-pulseaudio-x11.1.gz
 %{_mandir}/man5/*.*
-%exclude %{_mandir}/man1/esdcompat.1.gz
 %{_docdir}/%{name}-%{version}
