@@ -36,8 +36,6 @@
 #include <pulse/rtclock.h>
 #include <pulse/timeval.h>
 
-#include "module-loopback-symdef.h"
-
 PA_MODULE_AUTHOR("Pierre-Louis Bossart");
 PA_MODULE_DESCRIPTION("Loopback from source to sink");
 PA_MODULE_VERSION(PACKAGE_VERSION);
@@ -83,6 +81,12 @@ struct userdata {
 
     pa_time_event *time_event;
 
+    /* Variables used to calculate the average time between
+     * subsequent calls of adjust_rates() */
+    pa_usec_t adjust_time_stamp;
+    pa_usec_t real_adjust_time;
+    pa_usec_t real_adjust_time_sum;
+
     /* Values from command line configuration */
     pa_usec_t latency;
     pa_usec_t adjust_time;
@@ -104,18 +108,20 @@ struct userdata {
     /* Various counters */
     uint32_t iteration_counter;
     uint32_t underrun_counter;
+    uint32_t adjust_counter;
 
     bool fixed_alsa_source;
+    bool source_sink_changed;
 
     /* Used for sink input and source output snapshots */
     struct {
         int64_t send_counter;
-        pa_usec_t source_latency;
+        int64_t source_latency;
         pa_usec_t source_timestamp;
 
         int64_t recv_counter;
         size_t loopback_memblockq_length;
-        pa_usec_t sink_latency;
+        int64_t sink_latency;
         pa_usec_t sink_timestamp;
     } latency_snapshot;
 
@@ -125,9 +131,9 @@ struct userdata {
     /* Output thread variables */
     struct {
         int64_t recv_counter;
+        pa_usec_t effective_source_latency;
 
         /* Copied from main thread */
-        pa_usec_t effective_source_latency;
         pa_usec_t minimum_latency;
 
         /* Various booleans */
@@ -312,15 +318,16 @@ static void adjust_rates(struct userdata *u) {
     size_t buffer;
     uint32_t old_rate, base_rate, new_rate, run_hours;
     int32_t latency_difference;
-    pa_usec_t current_buffer_latency, snapshot_delay, current_source_sink_latency, current_latency, latency_at_optimum_rate;
-    pa_usec_t final_latency;
+    pa_usec_t current_buffer_latency, snapshot_delay;
+    int64_t current_source_sink_latency, current_latency, latency_at_optimum_rate;
+    pa_usec_t final_latency, now;
 
     pa_assert(u);
     pa_assert_ctl_context();
 
     /* Runtime and counters since last change of source or sink
      * or source/sink latency */
-    run_hours = u->iteration_counter * u->adjust_time / PA_USEC_PER_SEC / 3600;
+    run_hours = u->iteration_counter * u->real_adjust_time / PA_USEC_PER_SEC / 3600;
     u->iteration_counter +=1;
 
     /* If we are seeing underruns then the latency is too small */
@@ -333,10 +340,19 @@ static void adjust_rates(struct userdata *u) {
     }
 
     /* Allow one underrun per hour */
-    if (u->iteration_counter * u->adjust_time / PA_USEC_PER_SEC / 3600 > run_hours) {
+    if (u->iteration_counter * u->real_adjust_time / PA_USEC_PER_SEC / 3600 > run_hours) {
         u->underrun_counter = PA_CLIP_SUB(u->underrun_counter, 1u);
         pa_log_info("Underrun counter: %u", u->underrun_counter);
     }
+
+    /* Calculate real adjust time */
+    now = pa_rtclock_now();
+    if (!u->source_sink_changed) {
+        u->adjust_counter++;
+        u->real_adjust_time_sum += now - u->adjust_time_stamp;
+        u->real_adjust_time = u->real_adjust_time_sum / u->adjust_counter;
+    }
+    u->adjust_time_stamp = now;
 
     /* Rates and latencies*/
     old_rate = u->sink_input->sample_spec.rate;
@@ -359,7 +375,7 @@ static void adjust_rates(struct userdata *u) {
     latency_at_optimum_rate = current_source_sink_latency + current_buffer_latency * old_rate / base_rate;
 
     final_latency = PA_MAX(u->latency, u->minimum_latency);
-    latency_difference = (int32_t)((int64_t)latency_at_optimum_rate - final_latency);
+    latency_difference = (int32_t)(latency_at_optimum_rate - final_latency);
 
     pa_log_debug("Loopback overall latency is %0.2f ms + %0.2f ms + %0.2f ms = %0.2f ms",
                 (double) u->latency_snapshot.sink_latency / PA_USEC_PER_MSEC,
@@ -370,7 +386,9 @@ static void adjust_rates(struct userdata *u) {
     pa_log_debug("Loopback latency at base rate is %0.2f ms", (double)latency_at_optimum_rate / PA_USEC_PER_MSEC);
 
     /* Calculate new rate */
-    new_rate = rate_controller(base_rate, u->adjust_time, latency_difference);
+    new_rate = rate_controller(base_rate, u->real_adjust_time, latency_difference);
+
+    u->source_sink_changed = false;
 
     /* Set rate */
     pa_sink_input_set_rate(u->sink_input, new_rate);
@@ -473,12 +491,23 @@ static void update_latency_boundaries(struct userdata *u, pa_source *source, pa_
 
 /* Called from output context
  * Sets the memblockq to the configured latency corrected by latency_offset_usec */
-static void memblockq_adjust(struct userdata *u, pa_usec_t latency_offset_usec, bool allow_push) {
+static void memblockq_adjust(struct userdata *u, int64_t latency_offset_usec, bool allow_push) {
     size_t current_memblockq_length, requested_memblockq_length, buffer_correction;
-    pa_usec_t requested_buffer_latency, final_latency;
+    int64_t requested_buffer_latency;
+    pa_usec_t final_latency, requested_sink_latency;
 
     final_latency = PA_MAX(u->latency, u->output_thread_info.minimum_latency);
-    requested_buffer_latency = PA_CLIP_SUB(final_latency, latency_offset_usec);
+
+    /* If source or sink have some large negative latency offset, we might want to
+     * hold more than final_latency in the memblockq */
+    requested_buffer_latency = (int64_t)final_latency - latency_offset_usec;
+
+    /* Keep at least one sink latency in the queue to make sure that the sink
+     * never underruns initially */
+    requested_sink_latency = pa_sink_get_requested_latency_within_thread(u->sink_input->sink);
+    if (requested_buffer_latency < (int64_t)requested_sink_latency)
+        requested_buffer_latency = requested_sink_latency;
+
     requested_memblockq_length = pa_usec_to_bytes(requested_buffer_latency, &u->sink_input->sample_spec);
     current_memblockq_length = pa_memblockq_get_length(u->memblockq);
 
@@ -499,7 +528,8 @@ static void memblockq_adjust(struct userdata *u, pa_usec_t latency_offset_usec, 
 /* Called from input thread context */
 static void source_output_push_cb(pa_source_output *o, const pa_memchunk *chunk) {
     struct userdata *u;
-    pa_usec_t push_time, current_source_latency;
+    pa_usec_t push_time;
+    int64_t current_source_latency;
 
     pa_source_output_assert_ref(o);
     pa_source_output_assert_io_context(o);
@@ -507,9 +537,9 @@ static void source_output_push_cb(pa_source_output *o, const pa_memchunk *chunk)
 
     /* Send current source latency and timestamp with the message */
     push_time = pa_rtclock_now();
-    current_source_latency = pa_source_get_latency_within_thread(u->source_output->source, false);
+    current_source_latency = pa_source_get_latency_within_thread(u->source_output->source, true);
 
-    pa_asyncmsgq_post(u->asyncmsgq, PA_MSGOBJECT(u->sink_input), SINK_INPUT_MESSAGE_POST, PA_UINT_TO_PTR(current_source_latency), push_time, chunk, NULL);
+    pa_asyncmsgq_post(u->asyncmsgq, PA_MSGOBJECT(u->sink_input), SINK_INPUT_MESSAGE_POST, PA_INT_TO_PTR(current_source_latency), push_time, chunk, NULL);
     u->send_counter += (int64_t) chunk->length;
 }
 
@@ -538,7 +568,7 @@ static int source_output_process_msg_cb(pa_msgobject *obj, int code, void *data,
 
             u->latency_snapshot.send_counter = u->send_counter;
             /* Add content of delay memblockq to the source latency */
-            u->latency_snapshot.source_latency = pa_source_get_latency_within_thread(u->source_output->source, false) +
+            u->latency_snapshot.source_latency = pa_source_get_latency_within_thread(u->source_output->source, true) +
                                                  pa_bytes_to_usec(length, &u->source_output->source->sample_spec);
             u->latency_snapshot.source_timestamp = pa_rtclock_now();
 
@@ -689,6 +719,8 @@ static void source_output_moving_cb(pa_source_output *o, pa_source *dest) {
     u->iteration_counter = 0;
     u->underrun_counter = 0;
 
+    u->source_sink_changed = true;
+
     /* Send a mesage to the output thread that the source has changed.
      * If the sink is invalid here during a profile switching situation
      * we can safely set push_called to false directly. */
@@ -820,14 +852,14 @@ static int sink_input_process_msg_cb(pa_msgobject *obj, int code, void *data, in
              * are enabled. Disable them on first push and correct the memblockq. If pop
              * has not been called yet, wait until the pop_cb() requests the adjustment */
             if (u->output_thread_info.pop_called && (!u->output_thread_info.push_called || u->output_thread_info.pop_adjust)) {
-                pa_usec_t time_delta;
+                int64_t time_delta;
 
                 /* This is the source latency at the time push was called */
-                time_delta = PA_PTR_TO_UINT(data);
+                time_delta = PA_PTR_TO_INT(data);
                 /* Add the time between push and post */
                 time_delta += pa_rtclock_now() - (pa_usec_t) offset;
                 /* Add the sink latency */
-                time_delta += pa_sink_get_latency_within_thread(u->sink_input->sink, false);
+                time_delta += pa_sink_get_latency_within_thread(u->sink_input->sink, true);
 
                 /* The source latency report includes the audio in the chunk,
                  * but since we already pushed the chunk to the memblockq, we need
@@ -847,9 +879,9 @@ static int sink_input_process_msg_cb(pa_msgobject *obj, int code, void *data, in
                  * next push also contains too much data, and in that case the
                  * resulting latency will be wrong. */
                 if (pa_bytes_to_usec(chunk->length, &u->sink_input->sample_spec) > u->output_thread_info.effective_source_latency)
-                    time_delta = PA_CLIP_SUB(time_delta, u->output_thread_info.effective_source_latency);
+                    time_delta -= (int64_t)u->output_thread_info.effective_source_latency;
                 else
-                    time_delta = PA_CLIP_SUB(time_delta, pa_bytes_to_usec(chunk->length, &u->sink_input->sample_spec));
+                    time_delta -= (int64_t)pa_bytes_to_usec(chunk->length, &u->sink_input->sample_spec);
 
                 /* FIXME: We allow pushing silence here to fix up the latency. This
                  * might lead to a gap in the stream */
@@ -902,7 +934,7 @@ static int sink_input_process_msg_cb(pa_msgobject *obj, int code, void *data, in
             u->latency_snapshot.recv_counter = u->output_thread_info.recv_counter;
             u->latency_snapshot.loopback_memblockq_length = pa_memblockq_get_length(u->memblockq);
             /* Add content of render memblockq to sink latency */
-            u->latency_snapshot.sink_latency = pa_sink_get_latency_within_thread(u->sink_input->sink, false) +
+            u->latency_snapshot.sink_latency = pa_sink_get_latency_within_thread(u->sink_input->sink, true) +
                                                pa_bytes_to_usec(length, &u->sink_input->sink->sample_spec);
             u->latency_snapshot.sink_timestamp = pa_rtclock_now();
 
@@ -1070,6 +1102,8 @@ static void sink_input_moving_cb(pa_sink_input *i, pa_sink *dest) {
     /* Reset counters */
     u->iteration_counter = 0;
     u->underrun_counter = 0;
+
+    u->source_sink_changed = true;
 
     u->output_thread_info.pop_called = false;
     u->output_thread_info.first_pop_done = false;
@@ -1259,15 +1293,15 @@ int pa__init(pa_module *m) {
         goto fail;
     }
 
-    if (sink) {
-        ss = sink->sample_spec;
-        map = sink->channel_map;
+    if (source) {
+        ss = source->sample_spec;
+        map = source->channel_map;
         format_set = true;
         rate_set = true;
         channels_set = true;
-    } else if (source) {
-        ss = source->sample_spec;
-        map = source->channel_map;
+    } else if (sink) {
+        ss = sink->sample_spec;
+        map = sink->channel_map;
         format_set = true;
         rate_set = true;
         channels_set = true;
@@ -1319,6 +1353,9 @@ int pa__init(pa_module *m) {
     u->iteration_counter = 0;
     u->underrun_counter = 0;
     u->underrun_latency_limit = 0;
+    u->source_sink_changed = true;
+    u->real_adjust_time_sum = 0;
+    u->adjust_counter = 0;
 
     adjust_time_sec = DEFAULT_ADJUST_TIME_USEC / PA_USEC_PER_SEC;
     if (pa_modargs_get_value_u32(ma, "adjust_time", &adjust_time_sec) < 0) {
@@ -1331,79 +1368,13 @@ int pa__init(pa_module *m) {
     else
         u->adjust_time = DEFAULT_ADJUST_TIME_USEC;
 
-    pa_sink_input_new_data_init(&sink_input_data);
-    sink_input_data.driver = __FILE__;
-    sink_input_data.module = m;
-
-    if (sink)
-        pa_sink_input_new_data_set_sink(&sink_input_data, sink, false);
-
-    if (pa_modargs_get_proplist(ma, "sink_input_properties", sink_input_data.proplist, PA_UPDATE_REPLACE) < 0) {
-        pa_log("Failed to parse the sink_input_properties value.");
-        pa_sink_input_new_data_done(&sink_input_data);
-        goto fail;
-    }
-
-    if (!pa_proplist_contains(sink_input_data.proplist, PA_PROP_MEDIA_ROLE))
-        pa_proplist_sets(sink_input_data.proplist, PA_PROP_MEDIA_ROLE, "abstract");
-
-    pa_sink_input_new_data_set_sample_spec(&sink_input_data, &ss);
-    pa_sink_input_new_data_set_channel_map(&sink_input_data, &map);
-    sink_input_data.flags = PA_SINK_INPUT_VARIABLE_RATE | PA_SINK_INPUT_START_CORKED;
-
-    if (!remix)
-        sink_input_data.flags |= PA_SINK_INPUT_NO_REMIX;
-
-    if (!format_set)
-        sink_input_data.flags |= PA_SINK_INPUT_FIX_FORMAT;
-
-    if (!rate_set)
-        sink_input_data.flags |= PA_SINK_INPUT_FIX_RATE;
-
-    if (!channels_set)
-        sink_input_data.flags |= PA_SINK_INPUT_FIX_CHANNELS;
-
-    sink_dont_move = false;
-    if (pa_modargs_get_value_boolean(ma, "sink_dont_move", &sink_dont_move) < 0) {
-        pa_log("sink_dont_move= expects a boolean argument.");
-        goto fail;
-    }
-
-    if (sink_dont_move)
-        sink_input_data.flags |= PA_SINK_INPUT_DONT_MOVE;
-
-    pa_sink_input_new(&u->sink_input, m->core, &sink_input_data);
-    pa_sink_input_new_data_done(&sink_input_data);
-
-    if (!u->sink_input)
-        goto fail;
-
-    /* If format, rate or channels were originally unset, they are set now
-     * after the pa_sink_input_new() call. */
-    ss = u->sink_input->sample_spec;
-    map = u->sink_input->channel_map;
-
-    u->sink_input->parent.process_msg = sink_input_process_msg_cb;
-    u->sink_input->pop = sink_input_pop_cb;
-    u->sink_input->process_rewind = sink_input_process_rewind_cb;
-    u->sink_input->kill = sink_input_kill_cb;
-    u->sink_input->state_change = sink_input_state_change_cb;
-    u->sink_input->attach = sink_input_attach_cb;
-    u->sink_input->detach = sink_input_detach_cb;
-    u->sink_input->update_max_rewind = sink_input_update_max_rewind_cb;
-    u->sink_input->update_max_request = sink_input_update_max_request_cb;
-    u->sink_input->may_move_to = sink_input_may_move_to_cb;
-    u->sink_input->moving = sink_input_moving_cb;
-    u->sink_input->suspend = sink_input_suspend_cb;
-    u->sink_input->update_sink_latency_range = update_sink_latency_range_cb;
-    u->sink_input->update_sink_fixed_latency = update_sink_latency_range_cb;
-    u->sink_input->userdata = u;
+    u->real_adjust_time = u->adjust_time;
 
     pa_source_output_new_data_init(&source_output_data);
     source_output_data.driver = __FILE__;
     source_output_data.module = m;
     if (source)
-        pa_source_output_new_data_set_source(&source_output_data, source, false);
+        pa_source_output_new_data_set_source(&source_output_data, source, false, true);
 
     if (pa_modargs_get_proplist(ma, "source_output_properties", source_output_data.proplist, PA_UPDATE_REPLACE) < 0) {
         pa_log("Failed to parse the source_output_properties value.");
@@ -1420,6 +1391,15 @@ int pa__init(pa_module *m) {
 
     if (!remix)
         source_output_data.flags |= PA_SOURCE_OUTPUT_NO_REMIX;
+
+    if (!format_set)
+        source_output_data.flags |= PA_SOURCE_OUTPUT_FIX_FORMAT;
+
+    if (!rate_set)
+        source_output_data.flags |= PA_SOURCE_OUTPUT_FIX_RATE;
+
+    if (!channels_set)
+        source_output_data.flags |= PA_SOURCE_OUTPUT_FIX_CHANNELS;
 
     source_dont_move = false;
     if (pa_modargs_get_value_boolean(ma, "source_dont_move", &source_dont_move) < 0) {
@@ -1448,6 +1428,65 @@ int pa__init(pa_module *m) {
     u->source_output->update_source_latency_range = update_source_latency_range_cb;
     u->source_output->update_source_fixed_latency = update_source_latency_range_cb;
     u->source_output->userdata = u;
+
+    /* If format, rate or channels were originally unset, they are set now
+     * after the pa_source_output_new() call. */
+    ss = u->source_output->sample_spec;
+    map = u->source_output->channel_map;
+
+    pa_sink_input_new_data_init(&sink_input_data);
+    sink_input_data.driver = __FILE__;
+    sink_input_data.module = m;
+
+    if (sink)
+        pa_sink_input_new_data_set_sink(&sink_input_data, sink, false, true);
+
+    if (pa_modargs_get_proplist(ma, "sink_input_properties", sink_input_data.proplist, PA_UPDATE_REPLACE) < 0) {
+        pa_log("Failed to parse the sink_input_properties value.");
+        pa_sink_input_new_data_done(&sink_input_data);
+        goto fail;
+    }
+
+    if (!pa_proplist_contains(sink_input_data.proplist, PA_PROP_MEDIA_ROLE))
+        pa_proplist_sets(sink_input_data.proplist, PA_PROP_MEDIA_ROLE, "abstract");
+
+    pa_sink_input_new_data_set_sample_spec(&sink_input_data, &ss);
+    pa_sink_input_new_data_set_channel_map(&sink_input_data, &map);
+    sink_input_data.flags = PA_SINK_INPUT_VARIABLE_RATE | PA_SINK_INPUT_START_CORKED;
+
+    if (!remix)
+        sink_input_data.flags |= PA_SINK_INPUT_NO_REMIX;
+
+    sink_dont_move = false;
+    if (pa_modargs_get_value_boolean(ma, "sink_dont_move", &sink_dont_move) < 0) {
+        pa_log("sink_dont_move= expects a boolean argument.");
+        goto fail;
+    }
+
+    if (sink_dont_move)
+        sink_input_data.flags |= PA_SINK_INPUT_DONT_MOVE;
+
+    pa_sink_input_new(&u->sink_input, m->core, &sink_input_data);
+    pa_sink_input_new_data_done(&sink_input_data);
+
+    if (!u->sink_input)
+        goto fail;
+
+    u->sink_input->parent.process_msg = sink_input_process_msg_cb;
+    u->sink_input->pop = sink_input_pop_cb;
+    u->sink_input->process_rewind = sink_input_process_rewind_cb;
+    u->sink_input->kill = sink_input_kill_cb;
+    u->sink_input->state_change = sink_input_state_change_cb;
+    u->sink_input->attach = sink_input_attach_cb;
+    u->sink_input->detach = sink_input_detach_cb;
+    u->sink_input->update_max_rewind = sink_input_update_max_rewind_cb;
+    u->sink_input->update_max_request = sink_input_update_max_request_cb;
+    u->sink_input->may_move_to = sink_input_may_move_to_cb;
+    u->sink_input->moving = sink_input_moving_cb;
+    u->sink_input->suspend = sink_input_suspend_cb;
+    u->sink_input->update_sink_latency_range = update_sink_latency_range_cb;
+    u->sink_input->update_sink_fixed_latency = update_sink_latency_range_cb;
+    u->sink_input->userdata = u;
 
     update_latency_boundaries(u, u->source_output->source, u->sink_input->sink);
     set_sink_input_latency(u, u->sink_input->sink);

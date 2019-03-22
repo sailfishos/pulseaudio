@@ -28,8 +28,6 @@
 
 #include "raop-sink.h"
 
-#include "module-raop-sink-symdef.h"
-
 PA_MODULE_AUTHOR("Colin Guthrie");
 PA_MODULE_DESCRIPTION("RAOP Sink");
 PA_MODULE_VERSION(PACKAGE_VERSION);
@@ -46,7 +44,8 @@ PA_MODULE_USAGE(
         "rate=<sample rate> "
         "channels=<number of channels> "
         "username=<authentication user name, default: \"iTunes\"> "
-        "password=<authentication password>");
+        "password=<authentication password> "
+        "latency_msec=<audio latency>");
 
 static const char* const valid_modargs[] = {
     "name",
@@ -61,6 +60,7 @@ static const char* const valid_modargs[] = {
     "channels",
     "username",
     "password",
+    "latency_msec",
     NULL
 };
 

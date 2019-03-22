@@ -3,7 +3,7 @@
 
 Name:       pulseaudio
 
-%define pulseversion 11.1
+%define pulseversion 12.2
 
 Summary:    General purpose sound server
 Version:    %{pulseversion}
@@ -192,12 +192,12 @@ install -m0644 README %{buildroot}%{_docdir}/%{name}-%{version}
 %{_libdir}/pulse-%{pulseversion}/modules/module-alsa-source.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-always-sink.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-augment-properties.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-bluetooth-discover.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-bluetooth-policy.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-bluez4-device.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-bluez4-discover.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-bluez5-device.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-bluez5-discover.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-bluetooth-discover.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-bluetooth-policy.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-card-restore.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-cli-protocol-tcp.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-cli-protocol-unix.so
@@ -231,8 +231,10 @@ install -m0644 README %{buildroot}%{_docdir}/%{name}-%{version}
 %{_libdir}/pulse-%{pulseversion}/modules/module-pipe-source.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-position-event-sounds.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-remap-sink.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-remap-source.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-rescue-streams.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-role-cork.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-role-ducking.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-rtp-recv.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-rtp-send.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-rygel-media-server.so
@@ -242,20 +244,18 @@ install -m0644 README %{buildroot}%{_docdir}/%{name}-%{version}
 %{_libdir}/pulse-%{pulseversion}/modules/module-sine.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-stream-restore.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-suspend-on-idle.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-systemd-login.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-switch-on-port-available.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-switch-on-connect.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-tunnel-sink.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-switch-on-port-available.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-systemd-login.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-tunnel-sink-new.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-tunnel-source.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-tunnel-sink.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-tunnel-source-new.so
+%{_libdir}/pulse-%{pulseversion}/modules/module-tunnel-source.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-udev-detect.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-virtual-sink.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-virtual-source.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-virtual-surround-sink.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-volume-restore.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-remap-source.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-role-ducking.so
 %{_libdir}/pulseaudio/*.so
 %dir %{_datadir}/pulseaudio
 %dir %{_datadir}/pulseaudio/alsa-mixer

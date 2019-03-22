@@ -477,10 +477,10 @@ pa_cvolume *pa_sw_cvolume_multiply(pa_cvolume *dest, const pa_cvolume *a, const 
     pa_return_val_if_fail(pa_cvolume_valid(a), NULL);
     pa_return_val_if_fail(pa_cvolume_valid(b), NULL);
 
-    for (i = 0; i < a->channels && i < b->channels; i++)
-        dest->values[i] = pa_sw_volume_multiply(a->values[i], b->values[i]);
+    dest->channels = PA_MIN(a->channels, b->channels);
 
-    dest->channels = (uint8_t) i;
+    for (i = 0; i < dest->channels; i++)
+        dest->values[i] = pa_sw_volume_multiply(a->values[i], b->values[i]);
 
     return dest;
 }
@@ -512,10 +512,10 @@ pa_cvolume *pa_sw_cvolume_divide(pa_cvolume *dest, const pa_cvolume *a, const pa
     pa_return_val_if_fail(pa_cvolume_valid(a), NULL);
     pa_return_val_if_fail(pa_cvolume_valid(b), NULL);
 
-    for (i = 0; i < a->channels && i < b->channels; i++)
-        dest->values[i] = pa_sw_volume_divide(a->values[i], b->values[i]);
+    dest->channels = PA_MIN(a->channels, b->channels);
 
-    dest->channels = (uint8_t) i;
+    for (i = 0; i < dest->channels; i++)
+        dest->values[i] = pa_sw_volume_divide(a->values[i], b->values[i]);
 
     return dest;
 }
@@ -789,7 +789,7 @@ pa_cvolume* pa_cvolume_scale(pa_cvolume *v, pa_volume_t max) {
     return v;
 }
 
-pa_cvolume* pa_cvolume_scale_mask(pa_cvolume *v, pa_volume_t max, pa_channel_map *cm, pa_channel_position_mask_t mask) {
+pa_cvolume* pa_cvolume_scale_mask(pa_cvolume *v, pa_volume_t max, const pa_channel_map *cm, pa_channel_position_mask_t mask) {
     unsigned c;
     pa_volume_t t = 0;
 
@@ -942,10 +942,10 @@ pa_cvolume* pa_cvolume_merge(pa_cvolume *dest, const pa_cvolume *a, const pa_cvo
     pa_return_val_if_fail(pa_cvolume_valid(a), NULL);
     pa_return_val_if_fail(pa_cvolume_valid(b), NULL);
 
-    for (i = 0; i < a->channels && i < b->channels; i++)
-        dest->values[i] = PA_MAX(a->values[i], b->values[i]);
+    dest->channels = PA_MIN(a->channels, b->channels);
 
-    dest->channels = (uint8_t) i;
+    for (i = 0; i < dest->channels; i++)
+        dest->values[i] = PA_MAX(a->values[i], b->values[i]);
 
     return dest;
 }

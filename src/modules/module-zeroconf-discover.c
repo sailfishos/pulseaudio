@@ -42,8 +42,6 @@
 #include <pulsecore/namereg.h>
 #include <pulsecore/avahi-wrap.h>
 
-#include "module-zeroconf-discover-symdef.h"
-
 PA_MODULE_AUTHOR("Lennart Poettering");
 PA_MODULE_DESCRIPTION("mDNS/DNS-SD Service Discovery");
 PA_MODULE_VERSION(PACKAGE_VERSION);
@@ -242,7 +240,7 @@ static void resolver_cb(
 
         pa_log_debug("Loading %s with arguments '%s'", module_name, args);
 
-        if ((m = pa_module_load(u->core, module_name, args))) {
+        if (pa_module_load(&m, u->core, module_name, args) >= 0) {
             tnl->module_index = m->index;
             pa_hashmap_put(u->tunnels, tnl, tnl);
             tnl = NULL;

@@ -28,6 +28,8 @@
 #include <pulsecore/dbus-shared.h>
 #include <pulsecore/shared.h>
 #include <pulsecore/core-error.h>
+#include <pulse/timeval.h>
+#include <pulse/rtclock.h>
 
 #include "bluez5-util.h"
 
@@ -59,27 +61,24 @@
     "  </interface>"                                                \
     "</node>"
 
-typedef enum card_state {
-    CARD_STATE_RELEASED,
-    CARD_STATE_CANCELLED,
-    CARD_STATE_ACQUIRING,
-    CARD_STATE_PENDING,
-    CARD_STATE_ACQUIRED,
-} card_state_t;
+enum hf_audio_card_state {
+    HF_AUDIO_CARD_DISCONNECTED,
+    HF_AUDIO_CARD_CONNECTING,
+    HF_AUDIO_CARD_CONNECTED,
+};
 
 struct hf_audio_card {
     pa_bluetooth_backend *backend;
     char *path;
     char *remote_address;
     char *local_address;
+    pa_time_event *deferred_time_event;
 
+    enum hf_audio_card_state state;
     int fd;
     uint8_t codec;
 
     pa_bluetooth_transport *transport;
-
-    card_state_t wanted_state;
-    card_state_t active_state;
 };
 
 struct pa_bluetooth_backend {
@@ -92,7 +91,7 @@ struct pa_bluetooth_backend {
     PA_LLIST_HEAD(pa_dbus_pending, pending);
 };
 
-static void transport_release(struct hf_audio_card *card);
+static void cancel_deferred_event(struct hf_audio_card *card);
 
 static pa_dbus_pending* hf_dbus_send_and_add_to_pending(pa_bluetooth_backend *backend, DBusMessage *m,
                                                     DBusPendingCallNotifyFunction func, void *call_data) {
@@ -117,7 +116,6 @@ static struct hf_audio_card *hf_audio_card_new(pa_bluetooth_backend *backend, co
     card->path = pa_xstrdup(path);
     card->backend = backend;
     card->fd = -1;
-    card->active_state = card->wanted_state = CARD_STATE_RELEASED;
 
     return card;
 }
@@ -125,6 +123,7 @@ static struct hf_audio_card *hf_audio_card_new(pa_bluetooth_backend *backend, co
 static void hf_audio_card_free(struct hf_audio_card *card) {
     pa_assert(card);
 
+    cancel_deferred_event(card);
     pa_bluetooth_droid_volume_control_release(card->backend->discovery);
 
     if (card->transport)
@@ -165,32 +164,38 @@ static int socket_accept(int sock)
     return 0;
 }
 
-static const char *state_to_string(card_state_t state) {
-    switch (state) {
-        case CARD_STATE_RELEASED:   return "released";
-        case CARD_STATE_CANCELLED:  return "cancelled";
-        case CARD_STATE_ACQUIRING:  return "acquiring";
-        case CARD_STATE_PENDING:    return "pending";
-        case CARD_STATE_ACQUIRED:   return "acquired";
-    };
+#define DEFERRED_CONNECT_WAIT_TIME ((pa_usec_t) (5 * PA_USEC_PER_SEC))
 
-    pa_assert_not_reached();
-    return "<unknown>";
-}
+static void cancel_deferred_event(struct hf_audio_card *card) {
+    pa_assert(card);
 
-static void active_state_change(struct hf_audio_card *card, card_state_t new_state) {
-    if (card->active_state != new_state) {
-        pa_log_debug("active state change from %s to %s", state_to_string(card->active_state), state_to_string(new_state));
-        card->active_state = new_state;
+    if (card->deferred_time_event) {
+        pa_log_debug("cancel deferred connect waiting");
+        card->backend->core->mainloop->time_free(card->deferred_time_event);
+        card->deferred_time_event = NULL;
     }
 }
 
-static void wanted_state_change(struct hf_audio_card *card, card_state_t new_state) {
-    pa_assert(new_state == CARD_STATE_ACQUIRED || new_state == CARD_STATE_RELEASED);
-    if (card->wanted_state != new_state) {
-        pa_log_debug("wanted state changes from %s to %s", state_to_string(card->wanted_state), state_to_string(new_state));
-        card->wanted_state = new_state;
+static void deferred_event_cb(pa_mainloop_api *a, pa_time_event *e, const struct timeval *t, void *userdata) {
+    struct hf_audio_card *card = userdata;
+
+    pa_assert(card);
+
+    if (card->fd < 0) {
+        pa_log_debug("deferred event event timer up, card fd is not set");
+        cancel_deferred_event(card);
+        pa_bluetooth_transport_set_state(card->transport, PA_BLUETOOTH_TRANSPORT_STATE_DISCONNECTED);
     }
+}
+
+static void setup_deferred_event(struct hf_audio_card *card) {
+    pa_assert(card);
+
+    cancel_deferred_event(card);
+    pa_log_debug("setup deferred connect waiting");
+    card->deferred_time_event = pa_core_rttime_new(card->backend->core,
+                                                  pa_rtclock_now() + DEFERRED_CONNECT_WAIT_TIME,
+                                                  deferred_event_cb, card);
 }
 
 static int hf_audio_agent_transport_acquire(pa_bluetooth_transport *t, bool optional, size_t *imtu, size_t *omtu) {
@@ -199,64 +204,72 @@ static int hf_audio_agent_transport_acquire(pa_bluetooth_transport *t, bool opti
 
     pa_assert(card);
 
-    wanted_state_change(card, CARD_STATE_ACQUIRED);
+    if (!optional && card->fd < 0) {
+        DBusMessage *m, *r;
+        DBusError derr;
 
-    if (card->active_state == CARD_STATE_RELEASED || card->active_state == CARD_STATE_CANCELLED) {
-        DBusMessage *m;
+        if (card->state == HF_AUDIO_CARD_CONNECTING)
+            return -EAGAIN;
 
-        if (card->fd >= 0) {
-            pa_log_warn("Dangling fd");
-            transport_release(card);
-        }
+        card->state = HF_AUDIO_CARD_CONNECTING;
 
+        dbus_error_init(&derr);
         pa_assert_se(m = dbus_message_new_method_call(t->owner, t->path, "org.ofono.HandsfreeAudioCard", "Connect"));
-        dbus_connection_send(pa_dbus_connection_get(card->backend->connection), m, NULL);
+        r = dbus_connection_send_with_reply_and_block(pa_dbus_connection_get(card->backend->connection), m, -1, &derr);
         dbus_message_unref(m);
+        m = NULL;
 
-        active_state_change(card, CARD_STATE_ACQUIRING);
-        return -EAGAIN;
-    }
+        if (!r) {
+            pa_log_debug("transport acquire error: %s:%s",derr.name, derr.message);
 
-    else if (card->active_state == CARD_STATE_PENDING) {
-        /* The correct block size should take into account the SCO MTU from
-         * the Bluetooth adapter and (for adapters in the USB bus) the MxPS
-         * value from the Isoc USB endpoint in use by btusb and should be
-         * made available to userspace by the Bluetooth kernel subsystem.
-         * Meanwhile the empiric value 48 will be used. */
-        if (imtu)
-            *imtu = 48;
-        if (omtu)
-            *omtu = 48;
+            if (pa_streq(derr.name, "org.ofono.Error.Failed")) {
+                pa_log_debug("wait for a while if other end will connect to us, return -EAGAIN");
+                dbus_error_free(&derr);
+                setup_deferred_event(card);
+                return -EAGAIN;
+            }
 
-        t->codec = card->codec;
-
-        err = socket_accept(card->fd);
-        if (err < 0) {
-            pa_log_error("Deferred setup failed on fd %d: %s", card->fd, pa_cstrerror(-err));
-            wanted_state_change(card, CARD_STATE_RELEASED);
-            active_state_change(card, CARD_STATE_RELEASED);
-            card->fd = -1;
+            card->state = HF_AUDIO_CARD_DISCONNECTED;
+            pa_log_debug("transport acquire failed, return -1");
+            dbus_error_free(&derr);
             return -1;
         }
-        active_state_change(card, CARD_STATE_ACQUIRED);
+
+        dbus_message_unref(r);
+        r = NULL;
+
+        if (card->state == HF_AUDIO_CARD_CONNECTING) {
+            pa_log_debug("deferred setup, leave with -EAGAIN");
+            return -EAGAIN;
+        }
     }
 
-    else if (card->active_state == CARD_STATE_ACQUIRING)
-        return -EAGAIN;
+    cancel_deferred_event(card);
 
-    /* card->active_state == CARD_STATE_ACQUIRED */
+    /* The correct block size should take into account the SCO MTU from
+     * the Bluetooth adapter and (for adapters in the USB bus) the MxPS
+     * value from the Isoc USB endpoint in use by btusb and should be
+     * made available to userspace by the Bluetooth kernel subsystem.
+     * Meanwhile the empiric value 48 will be used. */
+    if (imtu)
+        *imtu = 48;
+    if (omtu)
+        *omtu = 48;
+
+    t->codec = card->codec;
+
+    err = socket_accept(card->fd);
+    if (err < 0) {
+        pa_log_error("Deferred setup failed on fd %d: %s", card->fd, pa_cstrerror(-err));
+        card->state = HF_AUDIO_CARD_DISCONNECTED;
+        return -1;
+    }
+
+    card->state = HF_AUDIO_CARD_CONNECTED;
+
+    pa_log_debug("Leave with fd %d", card->fd);
+
     return card->fd;
-}
-
-static void transport_release(struct hf_audio_card *card) {
-    if (card->fd < 0)
-        return;
-
-    pa_log_debug("Shutdown %s fd %d", card->path, card->fd);
-    /* shutdown to make sure connection is dropped immediately */
-    shutdown(card->fd, SHUT_RDWR);
-    close(card->fd);
-    card->fd = -1;
 }
 
 static void hf_audio_agent_transport_release(pa_bluetooth_transport *t) {
@@ -264,34 +277,18 @@ static void hf_audio_agent_transport_release(pa_bluetooth_transport *t) {
 
     pa_assert(card);
 
+    cancel_deferred_event(card);
     pa_bluetooth_droid_volume_control_release(card->backend->discovery);
 
-    wanted_state_change(card, CARD_STATE_RELEASED);
+    if (card->fd < 0) {
+        pa_log_info("Transport %s already released", t->path);
+        return;
+    }
 
-    switch (card->active_state) {
-        case CARD_STATE_CANCELLED:
-            /* fall through */
-        case CARD_STATE_RELEASED:
-            pa_log_info("Transport %s already released", t->path);
-            return;
-
-        case CARD_STATE_ACQUIRING:
-            pa_log_info("Release called for transport %s while acquiring", t->path);
-            active_state_change(card, CARD_STATE_CANCELLED);
-            break;
-
-        case CARD_STATE_PENDING:
-            pa_log_info("Release called for transport %s while pending", t->path);
-            active_state_change(card, CARD_STATE_CANCELLED);
-            break;
-
-        case CARD_STATE_ACQUIRED:
-            pa_log_info("Releasing transport %s", t->path);
-            active_state_change(card, CARD_STATE_RELEASED);
-            break;
-    };
-
-    transport_release(card);
+    /* shutdown to make sure connection is dropped immediately */
+    shutdown(card->fd, SHUT_RDWR);
+    close(card->fd);
+    card->fd = -1;
 }
 
 static void hf_audio_agent_card_found(pa_bluetooth_backend *backend, const char *path, DBusMessageIter *props_i) {
@@ -347,7 +344,6 @@ static void hf_audio_agent_card_found(pa_bluetooth_backend *backend, const char 
         goto fail;
     }
 
-    card->wanted_state = card->active_state = CARD_STATE_RELEASED;
     card->transport = pa_bluetooth_transport_new(d, backend->ofono_bus_id, path, p, NULL, 0);
     card->transport->acquire = hf_audio_agent_transport_acquire;
     card->transport->release = hf_audio_agent_transport_release;
@@ -575,15 +571,8 @@ fail:
     return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 }
 
-static DBusMessage *update_reply(DBusMessage *m, DBusMessage *r) {
-    if (!r && !dbus_message_get_no_reply(m))
-        pa_assert_se(r = dbus_message_new_method_return(m));
-
-    return r;
-}
-
 static DBusMessage *hf_audio_agent_release(DBusConnection *c, DBusMessage *m, void *data) {
-    DBusMessage *r = NULL;
+    DBusMessage *r;
     const char *sender;
     pa_bluetooth_backend *backend = data;
 
@@ -599,11 +588,13 @@ static DBusMessage *hf_audio_agent_release(DBusConnection *c, DBusMessage *m, vo
 
     ofono_bus_id_destroy(backend);
 
-    return update_reply(m, r);
+    pa_assert_se(r = dbus_message_new_method_return(m));
+
+    return r;
 }
 
 static DBusMessage *hf_audio_agent_new_connection(DBusConnection *c, DBusMessage *m, void *data) {
-    DBusMessage *r = NULL;
+    DBusMessage *r;
     const char *sender, *path;
     int fd;
     uint8_t codec;
@@ -615,7 +606,7 @@ static DBusMessage *hf_audio_agent_new_connection(DBusConnection *c, DBusMessage
     sender = dbus_message_get_sender(m);
     if (!pa_safe_streq(backend->ofono_bus_id, sender)) {
         pa_assert_se(r = dbus_message_new_error(m, "org.ofono.Error.NotAllowed", "Operation is not allowed by this sender"));
-        goto done;
+        return r;
     }
 
     if (dbus_message_get_args(m, NULL,
@@ -624,48 +615,41 @@ static DBusMessage *hf_audio_agent_new_connection(DBusConnection *c, DBusMessage
                               DBUS_TYPE_BYTE, &codec,
                               DBUS_TYPE_INVALID) == FALSE) {
         pa_assert_se(r = dbus_message_new_error(m, "org.ofono.Error.InvalidArguments", "Invalid arguments in method call"));
-        goto done;
+        return r;
     }
 
     card = pa_hashmap_get(backend->cards, path);
+
+    if (card)
+        cancel_deferred_event(card);
+
+    if (card && card->state == HF_AUDIO_CARD_DISCONNECTED)
+        pa_log_debug("oFono initiated connection");
 
     if (!card || codec != HFP_AUDIO_CODEC_CVSD || card->fd >= 0) {
         pa_log_warn("New audio connection invalid arguments (path=%s fd=%d, codec=%d)", path, fd, codec);
         pa_assert_se(r = dbus_message_new_error(m, "org.ofono.Error.InvalidArguments", "Invalid arguments in method call"));
         shutdown(fd, SHUT_RDWR);
         close(fd);
-        goto done;
+        if (card)
+            card->state = HF_AUDIO_CARD_DISCONNECTED;
+        return r;
     }
+
+    card->state = HF_AUDIO_CARD_CONNECTED;
 
     pa_log_debug("New audio connection on card %s (fd=%d, codec=%d)", path, fd, codec);
 
     card->fd = fd;
     card->transport->codec = codec;
 
-    if (card->active_state == CARD_STATE_RELEASED && card->wanted_state == CARD_STATE_RELEASED) {
-        pa_log_info("Remote %s initiated NewConnection", card->path);
-        wanted_state_change(card, CARD_STATE_ACQUIRED);
-    }
-    else if (card->active_state == CARD_STATE_CANCELLED) {
-        pa_log_warn("NewConnection while transport was cancelled");
-        goto release;
-    }
-
-    active_state_change(card, CARD_STATE_PENDING);
-
     pa_bluetooth_transport_set_state(card->transport, PA_BLUETOOTH_TRANSPORT_STATE_PLAYING);
 
     pa_bluetooth_droid_volume_control_acquire(backend->discovery, card->transport);
 
-    return update_reply(m, r);
+    pa_assert_se(r = dbus_message_new_method_return(m));
 
-release:
-    socket_accept(card->fd);
-    transport_release(card);
-    active_state_change(card, CARD_STATE_RELEASED);
-
-done:
-    return update_reply(m, r);
+    return r;
 }
 
 static DBusHandlerResult hf_audio_agent_handler(DBusConnection *c, DBusMessage *m, void *data) {

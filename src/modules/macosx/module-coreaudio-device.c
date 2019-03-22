@@ -48,8 +48,6 @@
 #include <CoreAudio/CoreAudioTypes.h>
 #include <CoreAudio/AudioHardware.h>
 
-#include "module-coreaudio-device-symdef.h"
-
 #define DEFAULT_FRAMES_PER_IOPROC 512
 
 PA_MODULE_AUTHOR("Daniel Mack");
@@ -57,11 +55,15 @@ PA_MODULE_DESCRIPTION("CoreAudio device");
 PA_MODULE_VERSION(PACKAGE_VERSION);
 PA_MODULE_LOAD_ONCE(false);
 PA_MODULE_USAGE("object_id=<the CoreAudio device id> "
-                "ioproc_frames=<audio frames per IOProc call> ");
+                "ioproc_frames=<audio frames per IOProc call> "
+                "record=<enable source?> "
+                "playback=<enable sink?> ");
 
 static const char* const valid_modargs[] = {
     "object_id",
     "ioproc_frames",
+    "record",
+    "playback",
     NULL
 };
 
@@ -351,7 +353,7 @@ static int source_process_msg(pa_msgobject *o, int code, void *data, int64_t off
     return pa_source_process_msg(o, code, data, offset, chunk);;
 }
 
-static int ca_sink_set_state(pa_sink *s, pa_sink_state_t state) {
+static int ca_sink_set_state_in_main_thread(pa_sink *s, pa_sink_state_t state, pa_suspend_cause_t suspend_cause) {
     coreaudio_sink *sink = s->userdata;
 
     switch (state) {
@@ -496,7 +498,7 @@ static int ca_device_create_sink(pa_module *m, AudioBuffer *buf, int channel_idx
 
     sink->parent.process_msg = sink_process_msg;
     sink->userdata = ca_sink;
-    sink->set_state = ca_sink_set_state;
+    sink->set_state_in_main_thread = ca_sink_set_state_in_main_thread;
 
     pa_sink_set_asyncmsgq(sink, u->thread_mq.inq);
     pa_sink_set_rtpoll(sink, u->rtpoll);
@@ -509,7 +511,7 @@ static int ca_device_create_sink(pa_module *m, AudioBuffer *buf, int channel_idx
     return 0;
 }
 
-static int ca_source_set_state(pa_source *s, pa_source_state_t state) {
+static int ca_source_set_state_in_main_thread(pa_source *s, pa_source_state_t state, pa_suspend_cause_t suspend_cause) {
     coreaudio_source *source = s->userdata;
 
     switch (state) {
@@ -630,7 +632,7 @@ static int ca_device_create_source(pa_module *m, AudioBuffer *buf, int channel_i
 
     source->parent.process_msg = source_process_msg;
     source->userdata = ca_source;
-    source->set_state = ca_source_set_state;
+    source->set_state_in_main_thread = ca_source_set_state_in_main_thread;
 
     pa_source_set_asyncmsgq(source, u->thread_mq.inq);
     pa_source_set_rtpoll(source, u->rtpoll);
@@ -757,6 +759,7 @@ int pa__init(pa_module *m) {
     UInt32 size, frames;
     struct userdata *u = NULL;
     pa_modargs *ma = NULL;
+    bool record = true, playback = true;
     char tmp[64];
     pa_card_new_data card_new_data;
     pa_card_profile *p;
@@ -768,6 +771,16 @@ int pa__init(pa_module *m) {
 
     if (!(ma = pa_modargs_new(m->argument, valid_modargs))) {
         pa_log("Failed to parse module arguments.");
+        goto fail;
+    }
+
+    if (pa_modargs_get_value_boolean(ma, "record", &record) < 0 || pa_modargs_get_value_boolean(ma, "playback", &playback) < 0) {
+        pa_log("record= and playback= expect boolean argument.");
+        goto fail;
+    }
+
+    if (!playback && !record) {
+        pa_log("neither playback nor record enabled for device.");
         goto fail;
     }
 
@@ -842,10 +855,12 @@ int pa__init(pa_module *m) {
     PA_LLIST_HEAD_INIT(coreaudio_sink, u->sinks);
 
     /* create sinks */
-    ca_device_create_streams(m, false);
+    if (playback)
+        ca_device_create_streams(m, false);
 
     /* create sources */
-    ca_device_create_streams(m, true);
+    if (record)
+        ca_device_create_streams(m, true);
 
     /* create the message thread */
     if (!(u->thread = pa_thread_new(u->device_name, thread_func, u))) {

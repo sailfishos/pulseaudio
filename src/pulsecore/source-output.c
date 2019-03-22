@@ -123,7 +123,8 @@ void pa_source_output_new_data_set_muted(pa_source_output_new_data *data, bool m
     data->muted = mute;
 }
 
-bool pa_source_output_new_data_set_source(pa_source_output_new_data *data, pa_source *s, bool save) {
+bool pa_source_output_new_data_set_source(pa_source_output_new_data *data, pa_source *s, bool save,
+                                          bool requested_by_application) {
     bool ret = true;
     pa_idxset *formats = NULL;
 
@@ -134,6 +135,7 @@ bool pa_source_output_new_data_set_source(pa_source_output_new_data *data, pa_so
         /* We're not working with the extended API */
         data->source = s;
         data->save_source = save;
+        data->source_requested_by_application = requested_by_application;
     } else {
         /* Extended API: let's see if this source supports the formats the client would like */
         formats = pa_source_check_formats(s, data->req_formats);
@@ -142,6 +144,7 @@ bool pa_source_output_new_data_set_source(pa_source_output_new_data *data, pa_so
             /* Source supports at least one of the requested formats */
             data->source = s;
             data->save_source = save;
+            data->source_requested_by_application = requested_by_application;
             if (data->nego_formats)
                 pa_idxset_free(data->nego_formats, (pa_free_cb_t) pa_format_info_free);
             data->nego_formats = formats;
@@ -167,7 +170,8 @@ bool pa_source_output_new_data_set_formats(pa_source_output_new_data *data, pa_i
 
     if (data->source) {
         /* Trigger format negotiation */
-        return pa_source_output_new_data_set_source(data, data->source, data->save_source);
+        return pa_source_output_new_data_set_source(data, data->source, data->save_source,
+                                                    data->source_requested_by_application);
     }
 
     return true;
@@ -271,7 +275,7 @@ int pa_source_output_new(
             pa_return_val_if_fail(source, -PA_ERR_NOENTITY);
         }
 
-        pa_source_output_new_data_set_source(data, source, false);
+        pa_source_output_new_data_set_source(data, source, false, false);
     }
 
     /* If something didn't pick a format for us, pick the top-most format since
@@ -280,6 +284,11 @@ int pa_source_output_new(
         data->format = pa_format_info_copy(pa_idxset_first(data->nego_formats, NULL));
 
     if (PA_LIKELY(data->format)) {
+        /* We know that data->source is set, because data->format has been set.
+         * data->format is set after a successful format negotiation, and that
+         * can't happen before data->source has been set. */
+        pa_assert(data->source);
+
         pa_log_debug("Negotiated format: %s", pa_format_info_snprint(fmt, sizeof(fmt), data->format));
     } else {
         pa_format_info *format;
@@ -297,7 +306,7 @@ int pa_source_output_new(
 
     /* Routing is done. We have a source and a format. */
 
-    if (data->volume_is_set && pa_format_info_is_pcm(data->format)) {
+    if (data->volume_is_set && !pa_source_output_new_data_is_passthrough(data)) {
         /* If volume is set, we need to save the original data->channel_map,
          * so that we can remap the volume from the original channel map to the
          * final channel map of the stream in case data->channel_map gets
@@ -305,6 +314,10 @@ int pa_source_output_new(
         r = pa_stream_get_volume_channel_map(&data->volume, data->channel_map_is_set ? &data->channel_map : NULL, data->format, &volume_map);
         if (r < 0)
             return r;
+    } else {
+        /* Initialize volume_map to invalid state. We check the state later to
+         * determine if volume remapping is needed. */
+        pa_channel_map_init(&volume_map);
     }
 
     /* Now populate the sample spec and channel map according to the final
@@ -332,7 +345,7 @@ int pa_source_output_new(
     if (!data->volume_writable)
         data->save_volume = false;
 
-    if (data->volume_is_set)
+    if (pa_channel_map_valid(&volume_map))
         /* The original volume channel map may be different than the final
          * stream channel map, so remapping may be needed. */
         pa_cvolume_remap(&data->volume, &volume_map, &data->channel_map);
@@ -356,7 +369,7 @@ int pa_source_output_new(
            module-suspend-on-idle can resume a source */
 
         pa_log_info("Trying to change sample rate");
-        if (pa_source_update_rate(data->source, data->sample_spec.rate, pa_source_output_new_data_is_passthrough(data)) >= 0)
+        if (pa_source_reconfigure(data->source, &data->sample_spec, pa_source_output_new_data_is_passthrough(data)) >= 0)
             pa_log_info("Rate changed to %u Hz", data->source->sample_spec.rate);
     }
 
@@ -419,6 +432,7 @@ int pa_source_output_new(
     o->driver = pa_xstrdup(pa_path_get_filename(data->driver));
     o->module = data->module;
     o->source = data->source;
+    o->source_requested_by_application = data->source_requested_by_application;
     o->destination_source = data->destination_source;
     o->client = data->client;
 
@@ -529,7 +543,7 @@ static void source_output_set_state(pa_source_output *o, pa_source_output_state_
             !pa_sample_spec_equal(&o->sample_spec, &o->source->sample_spec)) {
             /* We were uncorked and the source was not playing anything -- let's try
              * to update the sample rate to avoid resampling */
-            pa_source_update_rate(o->source, o->sample_spec.rate, pa_source_output_is_passthrough(o));
+            pa_source_reconfigure(o->source, &o->sample_spec, pa_source_output_is_passthrough(o));
         }
 
         pa_assert_se(pa_asyncmsgq_send(o->source->asyncmsgq, PA_MSGOBJECT(o), PA_SOURCE_OUTPUT_MESSAGE_SET_STATE, PA_UINT_TO_PTR(state), 0, NULL) == 0);
@@ -1171,7 +1185,7 @@ void pa_source_output_update_proplist(pa_source_output *o, pa_update_mode_t mode
     pa_assert_ctl_context();
 
     switch (mode) {
-        case PA_UPDATE_SET: {
+        case PA_UPDATE_SET:
             /* Delete everything that is not in p. */
             for (state = NULL; (key = pa_proplist_iterate(o->proplist, &state));) {
                 if (!pa_proplist_contains(p, key))
@@ -1179,18 +1193,14 @@ void pa_source_output_update_proplist(pa_source_output *o, pa_update_mode_t mode
             }
 
             /* Fall through. */
-        }
-
-        case PA_UPDATE_REPLACE: {
+        case PA_UPDATE_REPLACE:
             for (state = NULL; (key = pa_proplist_iterate(p, &state));) {
                 pa_proplist_get(p, key, (const void **) &value, &nbytes);
                 pa_source_output_set_property_arbitrary(o, key, value, nbytes);
             }
 
             break;
-        }
-
-        case PA_UPDATE_MERGE: {
+        case PA_UPDATE_MERGE:
             for (state = NULL; (key = pa_proplist_iterate(p, &state));) {
                 if (pa_proplist_contains(o->proplist, key))
                     continue;
@@ -1200,7 +1210,6 @@ void pa_source_output_update_proplist(pa_source_output *o, pa_update_mode_t mode
             }
 
             break;
-        }
     }
 }
 
@@ -1365,6 +1374,7 @@ int pa_source_output_start_move(pa_source_output *o) {
     pa_cvolume_remap(&o->volume_factor_source, &o->source->channel_map, &o->channel_map);
 
     o->source = NULL;
+    o->source_requested_by_application = false;
 
     pa_source_output_unref(o);
 
@@ -1523,12 +1533,12 @@ int pa_source_output_finish_move(pa_source_output *o, pa_source *dest, bool save
 
     if (!(o->flags & PA_SOURCE_OUTPUT_VARIABLE_RATE) &&
         !pa_sample_spec_equal(&o->sample_spec, &dest->sample_spec)) {
-        /* try to change dest sink rate if possible without glitches.
+        /* try to change dest source rate if possible without glitches.
            module-suspend-on-idle resumes destination source with
            SOURCE_OUTPUT_MOVE_FINISH hook */
 
         pa_log_info("Trying to change sample rate");
-        if (pa_source_update_rate(dest, o->sample_spec.rate, pa_source_output_is_passthrough(o)) >= 0)
+        if (pa_source_reconfigure(dest, &o->sample_spec, pa_source_output_is_passthrough(o)) >= 0)
             pa_log_info("Rate changed to %u Hz", dest->sample_spec.rate);
     }
 

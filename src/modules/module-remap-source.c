@@ -38,8 +38,6 @@
 #include <pulsecore/ltdl-helper.h>
 #include <pulsecore/mix.h>
 
-#include "module-remap-source-symdef.h"
-
 PA_MODULE_AUTHOR("Stefan Huber");
 PA_MODULE_DESCRIPTION("Virtual channel remapping source");
 PA_MODULE_VERSION(PACKAGE_VERSION);
@@ -110,7 +108,7 @@ static int source_process_msg_cb(pa_msgobject *o, int code, void *data, int64_t 
 }
 
 /* Called from main context */
-static int source_set_state_cb(pa_source *s, pa_source_state_t state) {
+static int source_set_state_in_main_thread_cb(pa_source *s, pa_source_state_t state, pa_suspend_cause_t suspend_cause) {
     struct userdata *u;
 
     pa_source_assert_ref(s);
@@ -173,6 +171,17 @@ static void source_output_process_rewind_cb(pa_source_output *o, size_t nbytes) 
     /* If the source is not yet linked, there is nothing to rewind */
     if (PA_SOURCE_IS_LINKED(u->source->thread_info.state))
         pa_source_process_rewind(u->source, nbytes);
+}
+
+/* Called from output thread context */
+static void source_output_update_max_rewind_cb(pa_source_output *o, size_t nbytes) {
+    struct userdata *u;
+
+    pa_source_output_assert_ref(o);
+    pa_source_output_assert_io_context(o);
+    pa_assert_se(u = o->userdata);
+
+    pa_source_set_max_rewind_within_thread(u->source, nbytes);
 }
 
 /* Called from output thread context */
@@ -358,7 +367,7 @@ int pa__init(pa_module*m) {
     }
 
     u->source->parent.process_msg = source_process_msg_cb;
-    u->source->set_state = source_set_state_cb;
+    u->source->set_state_in_main_thread = source_set_state_in_main_thread_cb;
     u->source->update_requested_latency = source_update_requested_latency_cb;
 
     u->source->userdata = u;
@@ -369,7 +378,7 @@ int pa__init(pa_module*m) {
     pa_source_output_new_data_init(&source_output_data);
     source_output_data.driver = __FILE__;
     source_output_data.module = m;
-    pa_source_output_new_data_set_source(&source_output_data, master, false);
+    pa_source_output_new_data_set_source(&source_output_data, master, false, true);
     source_output_data.destination_source = u->source;
 
     pa_proplist_sets(source_output_data.proplist, PA_PROP_MEDIA_NAME, "Remapped Stream");
@@ -387,6 +396,7 @@ int pa__init(pa_module*m) {
 
     u->source_output->push = source_output_push_cb;
     u->source_output->process_rewind = source_output_process_rewind_cb;
+    u->source_output->update_max_rewind = source_output_update_max_rewind_cb;
     u->source_output->kill = source_output_kill_cb;
     u->source_output->attach = source_output_attach_cb;
     u->source_output->detach = source_output_detach_cb;

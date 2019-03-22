@@ -44,7 +44,6 @@
 #include <pulsecore/dbus-util.h>
 #endif
 
-#include "module-ladspa-sink-symdef.h"
 #include "ladspa.h"
 
 PA_MODULE_AUTHOR("Lennart Poettering");
@@ -54,6 +53,7 @@ PA_MODULE_LOAD_ONCE(false);
 PA_MODULE_USAGE(
     _("sink_name=<name for the sink> "
       "sink_properties=<properties for the sink> "
+      "sink_input_properties=<properties for the sink input> "
       "master=<name of sink to filter> "
       "sink_master=<name of sink to filter> "
       "format=<sample format> "
@@ -108,6 +108,7 @@ struct userdata {
 static const char* const valid_modargs[] = {
     "sink_name",
     "sink_properties",
+    "sink_input_properties",
     "master",  /* Will be deprecated. */
     "sink_master",
     "format",
@@ -373,25 +374,13 @@ static int sink_process_msg_cb(pa_msgobject *o, int code, void *data, int64_t of
         connect_control_ports(u);
 
         return 0;
-
-        case PA_SINK_MESSAGE_SET_STATE: {
-            pa_sink_state_t new_state = (pa_sink_state_t) PA_PTR_TO_UINT(data);
-
-            /* When set to running or idle for the first time, request a rewind
-             * of the master sink to make sure we are heard immediately */
-            if ((new_state == PA_SINK_IDLE || new_state == PA_SINK_RUNNING) && u->sink->thread_info.state == PA_SINK_INIT) {
-                pa_log_debug("Requesting rewind due to state change.");
-                pa_sink_input_request_rewind(u->sink_input, 0, false, true, true);
-            }
-            break;
-        }
     }
 
     return pa_sink_process_msg(o, code, data, offset, chunk);
 }
 
 /* Called from main context */
-static int sink_set_state_cb(pa_sink *s, pa_sink_state_t state) {
+static int sink_set_state_in_main_thread_cb(pa_sink *s, pa_sink_state_t state, pa_suspend_cause_t suspend_cause) {
     struct userdata *u;
 
     pa_sink_assert_ref(s);
@@ -402,6 +391,23 @@ static int sink_set_state_cb(pa_sink *s, pa_sink_state_t state) {
         return 0;
 
     pa_sink_input_cork(u->sink_input, state == PA_SINK_SUSPENDED);
+    return 0;
+}
+
+/* Called from the IO thread. */
+static int sink_set_state_in_io_thread_cb(pa_sink *s, pa_sink_state_t new_state, pa_suspend_cause_t new_suspend_cause) {
+    struct userdata *u;
+
+    pa_assert(s);
+    pa_assert_se(u = s->userdata);
+
+    /* When set to running or idle for the first time, request a rewind
+     * of the master sink to make sure we are heard immediately */
+    if ((new_state == PA_SINK_IDLE || new_state == PA_SINK_RUNNING) && u->sink->thread_info.state == PA_SINK_INIT) {
+        pa_log_debug("Requesting rewind due to state change.");
+        pa_sink_input_request_rewind(u->sink_input, 0, false, true, true);
+    }
+
     return 0;
 }
 
@@ -712,7 +718,7 @@ static int parse_control_parameters(struct userdata *u, const char *cdata, doubl
 
     pa_log_debug("Trying to read %lu control values", u->n_control);
 
-    if (!cdata && u->n_control > 0)
+    if (!cdata || u->n_control == 0)
         return -1;
 
     pa_log_debug("cdata: '%s'", cdata);
@@ -1049,7 +1055,12 @@ int pa__init(pa_module*m) {
     u->ss = ss;
 
     if (!(e = getenv("LADSPA_PATH")))
-        e = LADSPA_PATH;
+        /* The LADSPA_PATH preprocessor macro isn't a string literal (i.e. it
+         * doesn't contain quotes), because otherwise the build system would
+         * have an extra burden of getting the escaping right (Windows paths
+         * are especially tricky). PA_EXPAND_AND_STRINGIZE does the necessary
+         * escaping. */
+        e = PA_EXPAND_AND_STRINGIZE(LADSPA_PATH);
 
     /* FIXME: This is not exactly thread safe */
     t = pa_xstrdup(lt_dlgetsearchpath());
@@ -1289,7 +1300,8 @@ int pa__init(pa_module*m) {
     }
 
     u->sink->parent.process_msg = sink_process_msg_cb;
-    u->sink->set_state = sink_set_state_cb;
+    u->sink->set_state_in_main_thread = sink_set_state_in_main_thread_cb;
+    u->sink->set_state_in_io_thread = sink_set_state_in_io_thread_cb;
     u->sink->update_requested_latency = sink_update_requested_latency_cb;
     u->sink->request_rewind = sink_request_rewind_cb;
     pa_sink_set_set_mute_callback(u->sink, sink_set_mute_cb);
@@ -1301,10 +1313,17 @@ int pa__init(pa_module*m) {
     pa_sink_input_new_data_init(&sink_input_data);
     sink_input_data.driver = __FILE__;
     sink_input_data.module = m;
-    pa_sink_input_new_data_set_sink(&sink_input_data, master, false);
+    pa_sink_input_new_data_set_sink(&sink_input_data, master, false, true);
     sink_input_data.origin_sink = u->sink;
     pa_proplist_sets(sink_input_data.proplist, PA_PROP_MEDIA_NAME, "LADSPA Stream");
     pa_proplist_sets(sink_input_data.proplist, PA_PROP_MEDIA_ROLE, "filter");
+
+    if (pa_modargs_get_proplist(ma, "sink_input_properties", sink_input_data.proplist, PA_UPDATE_REPLACE) < 0) {
+        pa_log("Invalid properties");
+        pa_sink_input_new_data_done(&sink_input_data);
+        goto fail;
+    }
+
     pa_sink_input_new_data_set_sample_spec(&sink_input_data, &ss);
     pa_sink_input_new_data_set_channel_map(&sink_input_data, &map);
     sink_input_data.flags |= PA_SINK_INPUT_START_CORKED;

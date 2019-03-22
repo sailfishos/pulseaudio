@@ -34,8 +34,6 @@
 #include <pulsecore/namereg.h>
 #include <pulsecore/core-util.h>
 
-#include "module-allow-passthrough-symdef.h"
-
 PA_MODULE_AUTHOR("Guillaume Desmottes");
 PA_MODULE_DESCRIPTION("When a passthrough stream is requested, route all the other streams to a dummy device");
 PA_MODULE_VERSION(PACKAGE_VERSION);
@@ -71,7 +69,7 @@ static pa_sink *ensure_null_sink_for_sink(struct userdata *u, pa_sink *s, pa_cor
 
     t = pa_sprintf_malloc("sink_name=allow_passthrough_null_%s sink_properties='device.description=\"%s\"'",
                           name ? name : "", _("Dummy Output"));
-    m = pa_module_load(c, "module-null-sink", t);
+    pa_module_load(&m, c, "module-null-sink", t);
     pa_xfree(t);
 
     if (m == NULL)
@@ -179,12 +177,18 @@ static pa_hook_result_t sink_input_new_cb(pa_core *core, pa_sink_input_new_data 
      * format). */
     if (!new_data->sink) {
         pa_sink *sink = pa_namereg_get(core, NULL, PA_NAMEREG_SINK);
-        pa_return_val_if_fail(sink, -PA_ERR_NOENTITY);
-        pa_sink_input_new_data_set_sink(new_data, sink, false);
+        pa_return_val_if_fail(sink, PA_HOOK_OK);
+        pa_sink_input_new_data_set_sink(new_data, sink, false, false);
     }
 
     if (!new_data->format && new_data->nego_formats && !pa_idxset_isempty(new_data->nego_formats))
         new_data->format = pa_format_info_copy(pa_idxset_first(new_data->nego_formats, NULL));
+
+    if (!new_data->format) {
+        /* Sink doesn't support any requested format */
+        pa_log_debug("Default sink does not match sink input requested formats");
+        return PA_HOOK_OK;
+    }
 
     if (pa_sink_input_new_data_is_passthrough(new_data))
         return new_passthrough_stream(u, core, new_data->sink, NULL);
@@ -193,7 +197,7 @@ static pa_hook_result_t sink_input_new_cb(pa_core *core, pa_sink_input_new_data 
 
     if (null_sink) {
         pa_log_info("Already playing a passthrough stream; re-routing new stream to the null sink");
-        pa_sink_input_new_data_set_sink(new_data, null_sink, false);
+        pa_sink_input_new_data_set_sink(new_data, null_sink, false, false);
     }
 
     return PA_HOOK_OK;

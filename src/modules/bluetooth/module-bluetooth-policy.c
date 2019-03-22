@@ -31,8 +31,6 @@
 #include <pulsecore/source.h>
 #include <pulsecore/core-util.h>
 
-#include "module-bluetooth-policy-symdef.h"
-
 PA_MODULE_AUTHOR("Frédéric Dalleau, Pali Rohár");
 PA_MODULE_DESCRIPTION("Policy module to make using bluetooth devices out-of-the-box easier");
 PA_MODULE_VERSION(PACKAGE_VERSION);
@@ -71,6 +69,7 @@ static pa_hook_result_t source_put_hook_callback(pa_core *c, pa_source *source, 
     const char *s;
     const char *role;
     char *args;
+    pa_module *m = NULL;
 
     pa_assert(c);
     pa_assert(source);
@@ -100,7 +99,7 @@ static pa_hook_result_t source_put_hook_callback(pa_core *c, pa_source *source, 
     /* Load module-loopback */
     args = pa_sprintf_malloc("source=\"%s\" source_dont_move=\"true\" sink_input_properties=\"media.role=%s\"", source->name,
                              role);
-    (void) pa_module_load(c, "module-loopback", args);
+    (void) pa_module_load(&m, c, "module-loopback", args);
     pa_xfree(args);
 
     return PA_HOOK_OK;
@@ -112,6 +111,7 @@ static pa_hook_result_t sink_put_hook_callback(pa_core *c, pa_sink *sink, void *
     const char *s;
     const char *role;
     char *args;
+    pa_module *m = NULL;
 
     pa_assert(c);
     pa_assert(sink);
@@ -139,7 +139,7 @@ static pa_hook_result_t sink_put_hook_callback(pa_core *c, pa_sink *sink, void *
     /* Load module-loopback */
     args = pa_sprintf_malloc("sink=\"%s\" sink_dont_move=\"true\" source_output_properties=\"media.role=%s\"", sink->name,
                              role);
-    (void) pa_module_load(c, "module-loopback", args);
+    (void) pa_module_load(&m, c, "module-loopback", args);
     pa_xfree(args);
 
     return PA_HOOK_OK;

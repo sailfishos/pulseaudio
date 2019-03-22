@@ -423,7 +423,7 @@ static int esd_proto_stream_play(connection *c, esd_proto_t request, const void 
     sdata.module = c->options->module;
     sdata.client = c->client;
     if (sink)
-        pa_sink_input_new_data_set_sink(&sdata, sink, false);
+        pa_sink_input_new_data_set_sink(&sdata, sink, false, true);
     pa_sink_input_new_data_set_sample_spec(&sdata, &ss);
 
     pa_sink_input_new(&c->sink_input, c->protocol->core, &sdata);
@@ -523,7 +523,7 @@ static int esd_proto_stream_record(connection *c, esd_proto_t request, const voi
     sdata.module = c->options->module;
     sdata.client = c->client;
     if (source)
-        pa_source_output_new_data_set_source(&sdata, source, false);
+        pa_source_output_new_data_set_source(&sdata, source, false, true);
     pa_source_output_new_data_set_sample_spec(&sdata, &ss);
 
     pa_source_output_new(&c->source_output, c->protocol->core, &sdata);
@@ -1354,11 +1354,10 @@ static int sink_input_process_msg(pa_msgobject *o, int code, void *userdata, int
         case PA_SINK_INPUT_MESSAGE_GET_LATENCY: {
             pa_usec_t *r = userdata;
 
+            /* The default handler will add in the extra latency added by the resampler. */
             *r = pa_bytes_to_usec(pa_memblockq_get_length(c->input_memblockq), &c->sink_input->sample_spec);
-
-            /* Fall through, the default handler will add in the extra
-             * latency added by the resampler */
         }
+        /* Fall through. */
 
         default:
             return pa_sink_input_process_msg(o, code, userdata, offset, chunk);

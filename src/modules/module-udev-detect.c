@@ -36,8 +36,6 @@
 #include <pulsecore/ratelimit.h>
 #include <pulsecore/strbuf.h>
 
-#include "module-udev-detect-symdef.h"
-
 PA_MODULE_AUTHOR("Lennart Poettering");
 PA_MODULE_DESCRIPTION("Detect available audio hardware and load matching drivers");
 PA_MODULE_VERSION(PACKAGE_VERSION);
@@ -332,7 +330,7 @@ static void verify_access(struct userdata *u, struct device *d) {
 
                 if (pa_ratelimit_test(&d->ratelimit, PA_LOG_DEBUG)) {
                     pa_log_debug("Loading module-alsa-card with arguments '%s'", d->args);
-                    m = pa_module_load(u->core, "module-alsa-card", d->args);
+                    pa_module_load(&m, u->core, "module-alsa-card", d->args);
 
                     if (m) {
                         d->module = m->index;

@@ -44,8 +44,6 @@
 #include <pulsecore/database.h>
 #include <pulsecore/tagstruct.h>
 
-#include "module-card-restore-symdef.h"
-
 PA_MODULE_AUTHOR("Lennart Poettering");
 PA_MODULE_DESCRIPTION("Automatically restore profile of cards");
 PA_MODULE_VERSION(PACKAGE_VERSION);
@@ -561,8 +559,12 @@ static pa_hook_result_t card_choose_initial_profile_callback(pa_core *core, pa_c
 
         profile = pa_hashmap_get(card->profiles, e->profile);
         if (profile) {
-            pa_log_info("Restoring profile '%s' for card %s.", card->active_profile->name, card->name);
-            pa_card_set_profile(card, profile, true);
+            if (profile->available != PA_AVAILABLE_NO) {
+                pa_log_info("Restoring profile '%s' for card %s.", profile->name, card->name);
+                pa_card_set_profile(card, profile, true);
+            } else
+                pa_log_debug("Not restoring profile %s for card %s, because the profile is currently unavailable.",
+                             profile->name, card->name);
         } else {
             pa_log_debug("Tried to restore profile %s for card %s, but the card doesn't have such profile.",
                          e->profile, card->name);

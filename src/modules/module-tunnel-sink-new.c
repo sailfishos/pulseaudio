@@ -41,8 +41,6 @@
 #include <pulsecore/rtpoll.h>
 #include <pulsecore/proplist-util.h>
 
-#include "module-tunnel-sink-new-symdef.h"
-
 PA_MODULE_AUTHOR("Alexander Couzens");
 PA_MODULE_DESCRIPTION("Create a network sink which connects via a stream to a remote PulseAudio server");
 PA_MODULE_VERSION(PACKAGE_VERSION);
@@ -431,28 +429,42 @@ static int sink_process_msg_cb(pa_msgobject *o, int code, void *data, int64_t of
             *((int64_t*) data) = remote_latency;
             return 0;
         }
-        case PA_SINK_MESSAGE_SET_STATE:
-            if (!u->stream || pa_stream_get_state(u->stream) != PA_STREAM_READY)
-                break;
-
-            switch ((pa_sink_state_t) PA_PTR_TO_UINT(data)) {
-                case PA_SINK_SUSPENDED: {
-                    cork_stream(u, true);
-                    break;
-                }
-                case PA_SINK_IDLE:
-                case PA_SINK_RUNNING: {
-                    cork_stream(u, false);
-                    break;
-                }
-                case PA_SINK_INVALID_STATE:
-                case PA_SINK_INIT:
-                case PA_SINK_UNLINKED:
-                    break;
-            }
-            break;
     }
     return pa_sink_process_msg(o, code, data, offset, chunk);
+}
+
+/* Called from the IO thread. */
+static int sink_set_state_in_io_thread_cb(pa_sink *s, pa_sink_state_t new_state, pa_suspend_cause_t new_suspend_cause) {
+    struct userdata *u;
+
+    pa_assert(s);
+    pa_assert_se(u = s->userdata);
+
+    /* It may be that only the suspend cause is changing, in which case there's
+     * nothing to do. */
+    if (new_state == s->thread_info.state)
+        return 0;
+
+    if (!u->stream || pa_stream_get_state(u->stream) != PA_STREAM_READY)
+        return 0;
+
+    switch (new_state) {
+        case PA_SINK_SUSPENDED: {
+            cork_stream(u, true);
+            break;
+        }
+        case PA_SINK_IDLE:
+        case PA_SINK_RUNNING: {
+            cork_stream(u, false);
+            break;
+        }
+        case PA_SINK_INVALID_STATE:
+        case PA_SINK_INIT:
+        case PA_SINK_UNLINKED:
+            break;
+    }
+
+    return 0;
 }
 
 int pa__init(pa_module *m) {
@@ -547,6 +559,7 @@ int pa__init(pa_module *m) {
     pa_sink_new_data_done(&sink_data);
     u->sink->userdata = u;
     u->sink->parent.process_msg = sink_process_msg_cb;
+    u->sink->set_state_in_io_thread = sink_set_state_in_io_thread_cb;
     u->sink->update_requested_latency = sink_update_requested_latency_cb;
     pa_sink_set_latency_range(u->sink, 0, MAX_LATENCY_USEC);
 

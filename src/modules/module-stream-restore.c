@@ -56,8 +56,6 @@
 #include <pulsecore/protocol-dbus.h>
 #endif
 
-#include "module-stream-restore-symdef.h"
-
 PA_MODULE_AUTHOR("Lennart Poettering");
 PA_MODULE_DESCRIPTION("Automatically restore the volume/mute/device state of streams");
 PA_MODULE_VERSION(PACKAGE_VERSION);
@@ -348,13 +346,18 @@ static void dbus_entry_free(struct dbus_entry *de) {
 static int get_volume_arg(DBusConnection *conn, DBusMessage *msg, DBusMessageIter *iter, pa_channel_map *map, pa_cvolume *vol) {
     DBusMessageIter array_iter;
     DBusMessageIter struct_iter;
+    char *signature;
 
     pa_assert(conn);
     pa_assert(msg);
     pa_assert(iter);
-    pa_assert(pa_streq(dbus_message_iter_get_signature(iter), "a(uu)"));
     pa_assert(map);
     pa_assert(vol);
+
+    pa_assert_se(signature = dbus_message_iter_get_signature(iter));
+    pa_assert(pa_streq(signature, "a(uu)"));
+
+    dbus_free(signature);
 
     pa_channel_map_init(map);
     pa_cvolume_init(vol);
@@ -1451,7 +1454,7 @@ static pa_hook_result_t sink_input_new_hook_callback(pa_core *c, pa_sink_input_n
            same time, in which case we want to make sure we don't
            interfere with that */
         if (s && PA_SINK_IS_LINKED(pa_sink_get_state(s)))
-            if (pa_sink_input_new_data_set_sink(new_data, s, true))
+            if (pa_sink_input_new_data_set_sink(new_data, s, true, false))
                 pa_log_info("Restoring device for stream %s.", name);
 
         entry_free(e);
@@ -1555,7 +1558,7 @@ static pa_hook_result_t source_output_new_hook_callback(pa_core *c, pa_source_ou
            interfere with that */
         if (s && PA_SOURCE_IS_LINKED(pa_source_get_state(s))) {
             pa_log_info("Restoring device for stream %s.", name);
-            pa_source_output_new_data_set_source(new_data, s, true);
+            pa_source_output_new_data_set_source(new_data, s, true, false);
         }
 
         entry_free(e);

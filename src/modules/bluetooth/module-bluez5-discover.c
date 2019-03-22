@@ -30,8 +30,6 @@
 
 #include "bluez5-util.h"
 
-#include "module-bluez5-discover-symdef.h"
-
 PA_MODULE_AUTHOR("João Paulo Rechi Vita");
 PA_MODULE_DESCRIPTION("Detect available BlueZ 5 Bluetooth audio devices and load BlueZ 5 Bluetooth audio drivers");
 PA_MODULE_VERSION(PACKAGE_VERSION);
@@ -76,7 +74,7 @@ static pa_hook_result_t device_connection_changed_cb(pa_bluetooth_discovery *y, 
         char *args = pa_sprintf_malloc("path=%s autodetect_mtu=%i", d->path, (int)u->autodetect_mtu);
 
         pa_log_debug("Loading module-bluez5-device %s", args);
-        m = pa_module_load(u->module->core, "module-bluez5-device", args);
+        pa_module_load(&m, u->module->core, "module-bluez5-device", args);
         pa_xfree(args);
 
         if (m)

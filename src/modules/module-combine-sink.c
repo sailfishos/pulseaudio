@@ -47,8 +47,6 @@
 #include <pulsecore/hashmap.h>
 #include <pulsecore/idxset.h>
 
-#include "module-combine-sink-symdef.h"
-
 PA_MODULE_AUTHOR("Lennart Poettering");
 PA_MODULE_DESCRIPTION("Combine multiple sinks to one");
 PA_MODULE_VERSION(PACKAGE_VERSION);
@@ -688,11 +686,16 @@ static void unsuspend(struct userdata *u) {
 }
 
 /* Called from main context */
-static int sink_set_state(pa_sink *sink, pa_sink_state_t state) {
+static int sink_set_state_in_main_thread_cb(pa_sink *sink, pa_sink_state_t state, pa_suspend_cause_t suspend_cause) {
     struct userdata *u;
 
     pa_sink_assert_ref(sink);
     pa_assert_se(u = sink->userdata);
+
+    /* It may be that only the suspend cause is changing, in which
+     * case there's nothing to do. */
+    if (state == u->sink->state)
+        return 0;
 
     /* Please note that in contrast to the ALSA modules we call
      * suspend/unsuspend from main context here! */
@@ -717,6 +720,30 @@ static int sink_set_state(pa_sink *sink, pa_sink_state_t state) {
         case PA_SINK_INVALID_STATE:
             ;
     }
+
+    return 0;
+}
+
+/* Called from the IO thread. */
+static int sink_set_state_in_io_thread_cb(pa_sink *s, pa_sink_state_t new_state, pa_suspend_cause_t new_suspend_cause) {
+    struct userdata *u;
+    bool running;
+
+    pa_assert(s);
+    pa_assert_se(u = s->userdata);
+
+    /* It may be that only the suspend cause is changing, in which case there's
+     * nothing to do. */
+    if (new_state == s->thread_info.state)
+        return 0;
+
+    running = new_state == PA_SINK_RUNNING;
+    pa_atomic_store(&u->thread_info.running, running);
+
+    if (running)
+        pa_smoother_resume(u->thread_info.smoother, pa_rtclock_now(), true);
+    else
+        pa_smoother_pause(u->thread_info.smoother, pa_rtclock_now());
 
     return 0;
 }
@@ -862,19 +889,6 @@ static int sink_process_msg(pa_msgobject *o, int code, void *data, int64_t offse
 
     switch (code) {
 
-        case PA_SINK_MESSAGE_SET_STATE: {
-            bool running = (PA_PTR_TO_UINT(data) == PA_SINK_RUNNING);
-
-            pa_atomic_store(&u->thread_info.running, running);
-
-            if (running)
-                pa_smoother_resume(u->thread_info.smoother, pa_rtclock_now(), true);
-            else
-                pa_smoother_pause(u->thread_info.smoother, pa_rtclock_now());
-
-            break;
-        }
-
         case PA_SINK_MESSAGE_GET_LATENCY: {
             pa_usec_t x, y, c;
             int64_t *delay = data;
@@ -980,7 +994,7 @@ static int output_create_sink_input(struct output *o) {
     u = o->userdata;
 
     pa_sink_input_new_data_init(&data);
-    pa_sink_input_new_data_set_sink(&data, o->sink, false);
+    pa_sink_input_new_data_set_sink(&data, o->sink, false, true);
     data.driver = __FILE__;
     pa_proplist_setf(data.proplist, PA_PROP_MEDIA_NAME, "Simultaneous output on %s", pa_strnull(pa_proplist_gets(o->sink->proplist, PA_PROP_DEVICE_DESCRIPTION)));
     pa_proplist_sets(data.proplist, PA_PROP_MEDIA_ROLE, "filter");
@@ -1453,7 +1467,8 @@ int pa__init(pa_module*m) {
     }
 
     u->sink->parent.process_msg = sink_process_msg;
-    u->sink->set_state = sink_set_state;
+    u->sink->set_state_in_main_thread = sink_set_state_in_main_thread_cb;
+    u->sink->set_state_in_io_thread = sink_set_state_in_io_thread_cb;
     u->sink->update_requested_latency = sink_update_requested_latency;
     u->sink->userdata = u;
 

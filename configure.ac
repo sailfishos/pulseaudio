@@ -44,7 +44,7 @@ AC_SUBST(PA_PROTOCOL_VERSION, 32)
 
 # The stable ABI for client applications, for the version info x:y:z
 # always will hold y=z
-AC_SUBST(LIBPULSE_VERSION_INFO, [20:2:20])
+AC_SUBST(LIBPULSE_VERSION_INFO, [20:3:20])
 
 # A simplified, synchronous, ABI-stable interface for client
 # applications, for the version info x:y:z always will hold y=z
@@ -84,9 +84,9 @@ AM_PROG_CC_C_O
 # Only required if you want the WebRTC canceller -- no runtime dep on
 # libstdc++ otherwise
 AC_PROG_CXX
-AX_CXX_COMPILE_STDCXX_11([ext],[optional])
 AC_PROG_GCC_TRADITIONAL
 AC_USE_SYSTEM_EXTENSIONS
+AX_CXX_COMPILE_STDCXX_11([ext],[optional])
 
 # M4
 
@@ -213,6 +213,9 @@ AC_SUBST([VERSIONING_LDFLAGS])
 # The -z now syntax is lifted from Sun's linker and works with GNU's too, other linkers might be added later.
 AX_APPEND_LINK_FLAGS([-Wl,-z,now], [IMMEDIATE_LDFLAGS])
 AC_SUBST([IMMEDIATE_LDFLAGS])
+AS_CASE([$IMMEDIATE_LDFLAGS],[*-z,now*],
+    [AC_DEFINE([HAVE_BIND_NOW],[1],
+               [Define to 1 if immediate binding is available])])
 
 # On ELF systems we don't want the libraries to be unloaded since we don't clean them up properly,
 # so we request the nodelete flag to be enabled.
@@ -410,7 +413,7 @@ AC_SUBST([LIBLTDL])
 AC_HEADER_STDC
 
 # POSIX
-AC_CHECK_HEADERS_ONCE([arpa/inet.h glob.h grp.h netdb.h netinet/in.h \
+AC_CHECK_HEADERS_ONCE([arpa/inet.h cpuid.h glob.h grp.h netdb.h netinet/in.h \
     netinet/in_systm.h netinet/tcp.h poll.h pwd.h sched.h \
     sys/mman.h sys/select.h sys/socket.h sys/wait.h \
     sys/uio.h syslog.h sys/dl.h dlfcn.h linux/sockios.h])
@@ -606,6 +609,9 @@ AS_IF([test "x$enable_memfd" != "xno"],
 AS_IF([test "x$enable_memfd" = "xyes" && test "x$HAVE_MEMFD" = "x0"],
     [AC_MSG_ERROR([*** Your Linux kernel does not support memfd shared memory.
                   *** Use linux v3.17 or higher for such a feature.])])
+
+AS_IF([test "x$HAVE_MEMFD" = "x1"],
+    AC_CHECK_FUNCS([memfd_create]))
 
 AC_SUBST(HAVE_MEMFD)
 AM_CONDITIONAL([HAVE_MEMFD], [test "x$HAVE_MEMFD" = x1])
@@ -906,10 +912,20 @@ AS_IF([test "x$enable_gtk3" = "xyes" && test "x$HAVE_GTK30" = "x0"],
 AM_CONDITIONAL([HAVE_GTK30], [test "x$HAVE_GTK30" = x1])
 AS_IF([test "x$HAVE_GTK30" = "x1"], AC_DEFINE([HAVE_GTK], 1, [Have GTK?]))
 
-#### GConf support (optional) ####
+#### GSettings and GConf support (optional) ####
+
+AC_ARG_ENABLE([gsettings],
+    AS_HELP_STRING([--disable-gsettings],[Disable optional GSettings support]))
 
 AC_ARG_ENABLE([gconf],
     AS_HELP_STRING([--disable-gconf],[Disable optional GConf support]))
+
+AS_IF([test "x$enable_gsettings" != "xno"],
+    [PKG_CHECK_MODULES(GSETTINGS, [ gio-2.0 >= 2.26.0 ], [HAVE_GSETTINGS=1], [HAVE_GSETTINGS=0])],
+    HAVE_GSETTINGS=0)
+
+AS_IF([test "x$enable_gsettings" = "xyes" && test "x$HAVE_GSETTINGS" = "x0"],
+    [AC_MSG_ERROR([*** GSettings support not found])])
 
 AS_IF([test "x$enable_gconf" != "xno"],
     [PKG_CHECK_MODULES(GCONF, [ gconf-2.0 >= 2.4.0 gobject-2.0 ], HAVE_GCONF=1, HAVE_GCONF=0)],
@@ -918,7 +934,25 @@ AS_IF([test "x$enable_gconf" != "xno"],
 AS_IF([test "x$enable_gconf" = "xyes" && test "x$HAVE_GCONF" = "x0"],
     [AC_MSG_ERROR([*** GConf support not found])])
 
-AM_CONDITIONAL([HAVE_GCONF], [test "x$HAVE_GCONF" = x1])
+# Enable only one of GSettings and GConf, unless both were explicitly
+# requested. If neither was explicitly requested and both are available, prefer
+# GSettings. This is done, because if module-gsettings and module-gconf are
+# both loaded, they can cause conflicting or at least confusing configuration.
+# Distributions may want to enable both modules when building PulseAudio, if
+# they ensure that both modules are never installed at the same time.
+AS_IF([test "x$HAVE_GSETTINGS" = "x1" && test "x$enable_gconf" != "xyes"],
+      [HAVE_GCONF=0])
+AS_IF([test "x$HAVE_GCONF" = "x1" && test "x$enable_gsettings" != "xyes"],
+      [HAVE_GSETTINGS=0])
+
+AM_CONDITIONAL([HAVE_GSETTINGS], [test "x$HAVE_GSETTINGS" = "x1"])
+AC_SUBST([HAVE_GSETTINGS])
+AM_CONDITIONAL([HAVE_GCONF], [test "x$HAVE_GCONF" = "x1"])
+AC_SUBST([HAVE_GCONF])
+
+if test "x$HAVE_GSETTINGS" = "x1" ; then
+    GLIB_GSETTINGS
+fi
 
 #### Avahi support (optional) ####
 
@@ -1504,7 +1538,6 @@ doxygen/doxygen.conf
 src/pulse/version.h
 po/Makefile.in
 man/pulseaudio.1.xml
-man/esdcompat.1.xml
 man/pax11publish.1.xml
 man/pacat.1.xml
 man/pacmd.1.xml
@@ -1518,7 +1551,12 @@ man/pulse-cli-syntax.5.xml
 man/start-pulseaudio-x11.1.xml
 ])
 
-AC_CONFIG_FILES([src/esdcompat:src/daemon/esdcompat.in], [chmod +x src/esdcompat])
+AS_IF([test "x$HAVE_ESOUND" = "x1"],
+    [
+        AC_CONFIG_FILES([man/esdcompat.1.xml])
+        AC_CONFIG_FILES([src/esdcompat:src/daemon/esdcompat.in], [chmod +x src/esdcompat])
+    ])
+
 AC_CONFIG_FILES([src/start-pulseaudio-x11:src/daemon/start-pulseaudio-x11.in], [chmod +x src/start-pulseaudio-x11])
 AC_CONFIG_FILES([src/client.conf:src/pulse/client.conf.in])
 AC_CONFIG_FILES([src/daemon.conf:src/daemon/daemon.conf.in],
@@ -1557,6 +1595,7 @@ AS_IF([test "x$HAVE_WAVEOUT" = "x1"], ENABLE_WAVEOUT=yes, ENABLE_WAVEOUT=no)
 AS_IF([test "x$HAVE_GLIB20" = "x1"], ENABLE_GLIB20=yes, ENABLE_GLIB20=no)
 AS_IF([test "x$HAVE_GTK30" = "x1"], ENABLE_GTK30=yes, ENABLE_GTK30=no)
 AS_IF([test "x$HAVE_GCONF" = "x1"], ENABLE_GCONF=yes, ENABLE_GCONF=no)
+AS_IF([test "x$HAVE_GSETTINGS" = "x1"], ENABLE_GSETTINGS=yes, ENABLE_GSETTINGS=no)
 AS_IF([test "x$HAVE_AVAHI" = "x1"], ENABLE_AVAHI=yes, ENABLE_AVAHI=no)
 AS_IF([test "x$HAVE_JACK" = "x1"], ENABLE_JACK=yes, ENABLE_JACK=no)
 AS_IF([test "x$HAVE_LIBASYNCNS" = "x1"], ENABLE_LIBASYNCNS=yes, ENABLE_LIBASYNCNS=no)
@@ -1619,6 +1658,7 @@ echo "
     Enable GLib 2.0:               ${ENABLE_GLIB20}
     Enable Gtk+ 3.0:               ${ENABLE_GTK30}
     Enable GConf:                  ${ENABLE_GCONF}
+    Enable GSettings:              ${ENABLE_GSETTINGS}
     Enable Avahi:                  ${ENABLE_AVAHI}
     Enable Jack:                   ${ENABLE_JACK}
     Enable Async DNS:              ${ENABLE_LIBASYNCNS}

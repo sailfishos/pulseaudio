@@ -39,8 +39,6 @@
 #include <pulsecore/ltdl-helper.h>
 #include <pulsecore/mix.h>
 
-#include "module-virtual-source-symdef.h"
-
 PA_MODULE_AUTHOR("Pierre-Louis Bossart");
 PA_MODULE_DESCRIPTION("Virtual source");
 PA_MODULE_VERSION(PACKAGE_VERSION);
@@ -113,7 +111,7 @@ static int sink_process_msg_cb(pa_msgobject *o, int code, void *data, int64_t of
 }
 
 /* Called from main context */
-static int sink_set_state_cb(pa_sink *s, pa_sink_state_t state) {
+static int sink_set_state_in_main_thread_cb(pa_sink *s, pa_sink_state_t state, pa_suspend_cause_t suspend_cause) {
     struct userdata *u;
 
     pa_sink_assert_ref(s);
@@ -196,7 +194,7 @@ static int source_process_msg_cb(pa_msgobject *o, int code, void *data, int64_t 
 }
 
 /* Called from main context */
-static int source_set_state_cb(pa_source *s, pa_source_state_t state) {
+static int source_set_state_in_main_thread_cb(pa_source *s, pa_source_state_t state, pa_suspend_cause_t suspend_cause) {
     struct userdata *u;
 
     pa_source_assert_ref(s);
@@ -368,6 +366,17 @@ static void source_output_process_rewind_cb(pa_source_output *o, size_t nbytes) 
     pa_asyncmsgq_post(u->asyncmsgq, PA_MSGOBJECT(u->sink_input), SINK_INPUT_MESSAGE_REWIND, NULL, (int64_t) nbytes, NULL, NULL);
     u->send_counter -= (int64_t) nbytes;
 #endif
+}
+
+/* Called from output thread context */
+static void source_output_update_max_rewind_cb(pa_source_output *o, size_t nbytes) {
+    struct userdata *u;
+
+    pa_source_output_assert_ref(o);
+    pa_source_output_assert_io_context(o);
+    pa_assert_se(u = o->userdata);
+
+    pa_source_set_max_rewind_within_thread(u->source, nbytes);
 }
 
 /* Called from output thread context */
@@ -570,7 +579,7 @@ int pa__init(pa_module*m) {
     }
 
     u->source->parent.process_msg = source_process_msg_cb;
-    u->source->set_state = source_set_state_cb;
+    u->source->set_state_in_main_thread = source_set_state_in_main_thread_cb;
     u->source->update_requested_latency = source_update_requested_latency_cb;
     pa_source_set_set_mute_callback(u->source, source_set_mute_cb);
     if (!use_volume_sharing) {
@@ -588,7 +597,7 @@ int pa__init(pa_module*m) {
     pa_source_output_new_data_init(&source_output_data);
     source_output_data.driver = __FILE__;
     source_output_data.module = m;
-    pa_source_output_new_data_set_source(&source_output_data, master, false);
+    pa_source_output_new_data_set_source(&source_output_data, master, false, true);
     source_output_data.destination_source = u->source;
 
     pa_proplist_setf(source_output_data.proplist, PA_PROP_MEDIA_NAME, "Virtual Source Stream of %s", pa_proplist_gets(u->source->proplist, PA_PROP_DEVICE_DESCRIPTION));
@@ -605,6 +614,7 @@ int pa__init(pa_module*m) {
 
     u->source_output->push = source_output_push_cb;
     u->source_output->process_rewind = source_output_process_rewind_cb;
+    u->source_output->update_max_rewind = source_output_update_max_rewind_cb;
     u->source_output->kill = source_output_kill_cb;
     u->source_output->attach = source_output_attach_cb;
     u->source_output->detach = source_output_detach_cb;
@@ -657,7 +667,7 @@ int pa__init(pa_module*m) {
         u->sink->parent.process_msg = sink_process_msg_cb;
         u->sink->update_requested_latency = sink_update_requested_latency_cb;
         u->sink->request_rewind = sink_request_rewind_cb;
-        u->sink->set_state = sink_set_state_cb;
+        u->sink->set_state_in_main_thread = sink_set_state_in_main_thread_cb;
         u->sink->userdata = u;
 
         pa_sink_set_asyncmsgq(u->sink, master->asyncmsgq);

@@ -26,7 +26,7 @@ details.
 
 Some other files pulled into PA source (i.e. reference implementations that are
 considered too small and stable to be considered as an external library) use the
-more permissive MIT license. This include the device reservation DBus protocol
+more permissive MIT license. These include the device reservation DBus protocol
 and realtime kit implementations.
 
 A more permissive BSD-style license is used for LFE filters, see
@@ -34,10 +34,6 @@ src/pulsecore/filter/LICENSE.WEBKIT for details.
 
 Additionally, a more permissive Sun license is used for code that performs
 u-law, A-law and linear PCM conversions.
-
-The qpaeq program (src/utils/qpaeq) is licensed under the GNU Affero General
-Public License (version 3, or any later version at your discretion). See the
-file AGPL for details.
 
 While we attempt to provide a summary here, it is the ultimate responsibility of
 the packager to ensure the components they use in their build of PulseAudio

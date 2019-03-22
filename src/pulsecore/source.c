@@ -56,9 +56,9 @@ struct pa_source_volume_change {
     PA_LLIST_FIELDS(pa_source_volume_change);
 };
 
-struct source_message_set_port {
-    pa_device_port *port;
-    int ret;
+struct set_state_data {
+    pa_source_state_t state;
+    pa_suspend_cause_t suspend_cause;
 };
 
 static void source_free(pa_object *o);
@@ -141,7 +141,8 @@ void pa_source_new_data_done(pa_source_new_data *data) {
 static void reset_callbacks(pa_source *s) {
     pa_assert(s);
 
-    s->set_state = NULL;
+    s->set_state_in_main_thread = NULL;
+    s->set_state_in_io_thread = NULL;
     s->get_volume = NULL;
     s->set_volume = NULL;
     s->write_volume = NULL;
@@ -150,7 +151,7 @@ static void reset_callbacks(pa_source *s) {
     s->update_requested_latency = NULL;
     s->set_port = NULL;
     s->get_formats = NULL;
-    s->update_rate = NULL;
+    s->reconfigure = NULL;
 }
 
 /* Called from main context */
@@ -240,7 +241,6 @@ pa_source* pa_source_new(
     s->flags = flags;
     s->priority = 0;
     s->suspend_cause = data->suspend_cause;
-    pa_source_set_mixer_dirty(s, false);
     s->name = pa_xstrdup(name);
     s->proplist = pa_proplist_copy(data->proplist);
     s->driver = pa_xstrdup(pa_path_get_filename(data->driver));
@@ -257,11 +257,6 @@ pa_source* pa_source_new(
         s->alternate_sample_rate = data->alternate_sample_rate;
     else
         s->alternate_sample_rate = s->core->alternate_sample_rate;
-
-    if (s->sample_spec.rate == s->alternate_sample_rate) {
-        pa_log_debug("Default and alternate sample rates are the same.");
-        s->alternate_sample_rate = 0;
-    }
 
     s->outputs = pa_idxset_new(NULL, NULL);
     s->n_corked = 0;
@@ -351,44 +346,103 @@ pa_source* pa_source_new(
 }
 
 /* Called from main context */
-static int source_set_state(pa_source *s, pa_source_state_t state) {
-    int ret;
-    bool suspend_change;
-    pa_source_state_t original_state;
+static int source_set_state(pa_source *s, pa_source_state_t state, pa_suspend_cause_t suspend_cause) {
+    int ret = 0;
+    bool state_changed;
+    bool suspend_cause_changed;
+    bool suspending;
+    bool resuming;
 
     pa_assert(s);
     pa_assert_ctl_context();
 
-    if (s->state == state)
+    state_changed = state != s->state;
+    suspend_cause_changed = suspend_cause != s->suspend_cause;
+
+    if (!state_changed && !suspend_cause_changed)
         return 0;
 
-    original_state = s->state;
+    suspending = PA_SOURCE_IS_OPENED(s->state) && state == PA_SOURCE_SUSPENDED;
+    resuming = s->state == PA_SOURCE_SUSPENDED && PA_SOURCE_IS_OPENED(state);
 
-    suspend_change =
-        (original_state == PA_SOURCE_SUSPENDED && PA_SOURCE_IS_OPENED(state)) ||
-        (PA_SOURCE_IS_OPENED(original_state) && state == PA_SOURCE_SUSPENDED);
+    /* If we are resuming, suspend_cause must be 0. */
+    pa_assert(!resuming || !suspend_cause);
 
-    if (s->set_state)
-        if ((ret = s->set_state(s, state)) < 0)
-            return ret;
+    /* Here's something to think about: what to do with the suspend cause if
+     * resuming the source fails? The old suspend cause will be incorrect, so we
+     * can't use that. On the other hand, if we set no suspend cause (as is the
+     * case currently), then it looks strange to have a source suspended without
+     * any cause. It might be a good idea to add a new "resume failed" suspend
+     * cause, or it might just add unnecessary complexity, given that the
+     * current approach of not setting any suspend cause works well enough. */
 
-    if (s->asyncmsgq)
-        if ((ret = pa_asyncmsgq_send(s->asyncmsgq, PA_MSGOBJECT(s), PA_SOURCE_MESSAGE_SET_STATE, PA_UINT_TO_PTR(state), 0, NULL)) < 0) {
+    if (s->set_state_in_main_thread) {
+        if ((ret = s->set_state_in_main_thread(s, state, suspend_cause)) < 0) {
+            /* set_state_in_main_thread() is allowed to fail only when resuming. */
+            pa_assert(resuming);
 
-            if (s->set_state)
-                s->set_state(s, original_state);
+            /* If resuming fails, we set the state to SUSPENDED and
+             * suspend_cause to 0. */
+            state = PA_SOURCE_SUSPENDED;
+            suspend_cause = 0;
+            state_changed = false;
+            suspend_cause_changed = suspend_cause != s->suspend_cause;
+            resuming = false;
 
-            return ret;
+            /* We know the state isn't changing. If the suspend cause isn't
+             * changing either, then there's nothing more to do. */
+            if (!suspend_cause_changed)
+                return ret;
         }
-
-    s->state = state;
-
-    if (state != PA_SOURCE_UNLINKED) { /* if we enter UNLINKED state pa_source_unlink() will fire the appropriate events */
-        pa_hook_fire(&s->core->hooks[PA_CORE_HOOK_SOURCE_STATE_CHANGED], s);
-        pa_subscription_post(s->core, PA_SUBSCRIPTION_EVENT_SOURCE | PA_SUBSCRIPTION_EVENT_CHANGE, s->index);
     }
 
-    if (suspend_change) {
+    if (s->asyncmsgq) {
+        struct set_state_data data = { .state = state, .suspend_cause = suspend_cause };
+
+        if ((ret = pa_asyncmsgq_send(s->asyncmsgq, PA_MSGOBJECT(s), PA_SOURCE_MESSAGE_SET_STATE, &data, 0, NULL)) < 0) {
+            /* SET_STATE is allowed to fail only when resuming. */
+            pa_assert(resuming);
+
+            if (s->set_state_in_main_thread)
+                s->set_state_in_main_thread(s, PA_SOURCE_SUSPENDED, 0);
+
+            /* If resuming fails, we set the state to SUSPENDED and
+             * suspend_cause to 0. */
+            state = PA_SOURCE_SUSPENDED;
+            suspend_cause = 0;
+            state_changed = false;
+            suspend_cause_changed = suspend_cause != s->suspend_cause;
+            resuming = false;
+
+            /* We know the state isn't changing. If the suspend cause isn't
+             * changing either, then there's nothing more to do. */
+            if (!suspend_cause_changed)
+                return ret;
+        }
+    }
+
+    if (suspend_cause_changed) {
+        char old_cause_buf[PA_SUSPEND_CAUSE_TO_STRING_BUF_SIZE];
+        char new_cause_buf[PA_SUSPEND_CAUSE_TO_STRING_BUF_SIZE];
+
+        pa_log_debug("%s: suspend_cause: %s -> %s", s->name, pa_suspend_cause_to_string(s->suspend_cause, old_cause_buf),
+                     pa_suspend_cause_to_string(suspend_cause, new_cause_buf));
+        s->suspend_cause = suspend_cause;
+    }
+
+    if (state_changed) {
+        pa_log_debug("%s: state: %s -> %s", s->name, pa_source_state_to_string(s->state), pa_source_state_to_string(state));
+        s->state = state;
+
+        /* If we enter UNLINKED state, then we don't send change notifications.
+         * pa_source_unlink() will send unlink notifications instead. */
+        if (state != PA_SOURCE_UNLINKED) {
+            pa_hook_fire(&s->core->hooks[PA_CORE_HOOK_SOURCE_STATE_CHANGED], s);
+            pa_subscription_post(s->core, PA_SUBSCRIPTION_EVENT_SOURCE | PA_SUBSCRIPTION_EVENT_CHANGE, s->index);
+        }
+    }
+
+    if (suspending || resuming) {
         pa_source_output *o;
         uint32_t idx;
 
@@ -402,7 +456,7 @@ static int source_set_state(pa_source *s, pa_source_state_t state) {
                 o->suspend(o, state == PA_SOURCE_SUSPENDED);
     }
 
-    return 0;
+    return ret;
 }
 
 void pa_source_set_get_volume_callback(pa_source *s, pa_source_cb_t cb) {
@@ -599,9 +653,9 @@ void pa_source_put(pa_source *s) {
     pa_assert(!(s->flags & PA_SOURCE_DYNAMIC_LATENCY) == !(s->thread_info.fixed_latency == 0));
 
     if (s->suspend_cause)
-        pa_assert_se(source_set_state(s, PA_SOURCE_SUSPENDED) == 0);
+        pa_assert_se(source_set_state(s, PA_SOURCE_SUSPENDED, s->suspend_cause) == 0);
     else
-        pa_assert_se(source_set_state(s, PA_SOURCE_IDLE) == 0);
+        pa_assert_se(source_set_state(s, PA_SOURCE_IDLE, 0) == 0);
 
     pa_subscription_post(s->core, PA_SUBSCRIPTION_EVENT_SOURCE | PA_SUBSCRIPTION_EVENT_NEW, s->index);
     pa_hook_fire(&s->core->hooks[PA_CORE_HOOK_SOURCE_PUT], s);
@@ -648,7 +702,7 @@ void pa_source_unlink(pa_source *s) {
     }
 
     if (linked)
-        source_set_state(s, PA_SOURCE_UNLINKED);
+        source_set_state(s, PA_SOURCE_UNLINKED, 0);
     else
         s->state = PA_SOURCE_UNLINKED;
 
@@ -750,16 +804,13 @@ int pa_source_update_status(pa_source*s) {
     if (s->state == PA_SOURCE_SUSPENDED)
         return 0;
 
-    return source_set_state(s, pa_source_used_by(s) ? PA_SOURCE_RUNNING : PA_SOURCE_IDLE);
-}
-
-/* Called from any context - must be threadsafe */
-void pa_source_set_mixer_dirty(pa_source *s, bool is_dirty) {
-    pa_atomic_store(&s->mixer_dirty, is_dirty ? 1 : 0);
+    return source_set_state(s, pa_source_used_by(s) ? PA_SOURCE_RUNNING : PA_SOURCE_IDLE, 0);
 }
 
 /* Called from main context */
 int pa_source_suspend(pa_source *s, bool suspend, pa_suspend_cause_t cause) {
+    pa_suspend_cause_t merged_cause;
+
     pa_source_assert_ref(s);
     pa_assert_ctl_context();
     pa_assert(PA_SOURCE_IS_LINKED(s->state));
@@ -769,45 +820,20 @@ int pa_source_suspend(pa_source *s, bool suspend, pa_suspend_cause_t cause) {
         return -PA_ERR_NOTSUPPORTED;
 
     if (suspend)
-        s->suspend_cause |= cause;
+        merged_cause = s->suspend_cause | cause;
     else
-        s->suspend_cause &= ~cause;
+        merged_cause = s->suspend_cause & ~cause;
 
-    if (!(s->suspend_cause & PA_SUSPEND_SESSION) && (pa_atomic_load(&s->mixer_dirty) != 0)) {
-        /* This might look racy but isn't: If somebody sets mixer_dirty exactly here,
-           it'll be handled just fine. */
-        pa_source_set_mixer_dirty(s, false);
-        pa_log_debug("Mixer is now accessible. Updating alsa mixer settings.");
-        if (s->active_port && s->set_port) {
-            if (s->flags & PA_SOURCE_DEFERRED_VOLUME) {
-                struct source_message_set_port msg = { .port = s->active_port, .ret = 0 };
-                pa_assert_se(pa_asyncmsgq_send(s->asyncmsgq, PA_MSGOBJECT(s), PA_SOURCE_MESSAGE_SET_PORT, &msg, 0, NULL) == 0);
-            }
-            else
-                s->set_port(s, s->active_port);
-        }
-        else {
-            if (s->set_mute)
-                s->set_mute(s);
-            if (s->set_volume)
-                s->set_volume(s);
-        }
-    }
-
-    if ((pa_source_get_state(s) == PA_SOURCE_SUSPENDED) == !!s->suspend_cause)
-        return 0;
-
-    pa_log_debug("Suspend cause of source %s is 0x%04x, %s", s->name, s->suspend_cause, s->suspend_cause ? "suspending" : "resuming");
-
-    if (s->suspend_cause)
-        return source_set_state(s, PA_SOURCE_SUSPENDED);
+    if (merged_cause)
+        return source_set_state(s, PA_SOURCE_SUSPENDED, merged_cause);
     else
-        return source_set_state(s, pa_source_used_by(s) ? PA_SOURCE_RUNNING : PA_SOURCE_IDLE);
+        return source_set_state(s, pa_source_used_by(s) ? PA_SOURCE_RUNNING : PA_SOURCE_IDLE, 0);
 }
 
 /* Called from main context */
 int pa_source_sync_suspend(pa_source *s) {
     pa_sink_state_t state;
+    pa_suspend_cause_t suspend_cause;
 
     pa_source_assert_ref(s);
     pa_assert_ctl_context();
@@ -815,13 +841,22 @@ int pa_source_sync_suspend(pa_source *s) {
     pa_assert(s->monitor_of);
 
     state = pa_sink_get_state(s->monitor_of);
+    suspend_cause = s->monitor_of->suspend_cause;
 
-    if (state == PA_SINK_SUSPENDED)
-        return source_set_state(s, PA_SOURCE_SUSPENDED);
+    /* The monitor source usually has the same state and suspend cause as the
+     * sink, the only exception is when the monitor source is suspended due to
+     * the sink being in the passthrough mode. If the monitor currently has the
+     * PASSTHROUGH suspend cause, then we have to keep the monitor suspended
+     * even if the sink is running. */
+    if (s->suspend_cause & PA_SUSPEND_PASSTHROUGH)
+        suspend_cause |= PA_SUSPEND_PASSTHROUGH;
+
+    if (state == PA_SINK_SUSPENDED || suspend_cause)
+        return source_set_state(s, PA_SOURCE_SUSPENDED, suspend_cause);
 
     pa_assert(PA_SINK_IS_OPENED(state));
 
-    return source_set_state(s, pa_source_used_by(s) ? PA_SOURCE_RUNNING : PA_SOURCE_IDLE);
+    return source_set_state(s, pa_source_used_by(s) ? PA_SOURCE_RUNNING : PA_SOURCE_IDLE, 0);
 }
 
 /* Called from main context */
@@ -860,9 +895,11 @@ void pa_source_move_all_finish(pa_source *s, pa_queue *q, bool save) {
     pa_assert(q);
 
     while ((o = PA_SOURCE_OUTPUT(pa_queue_pop(q)))) {
-        if (pa_source_output_finish_move(o, s, save) < 0)
-            pa_source_output_fail_move(o);
+        if (PA_SOURCE_OUTPUT_IS_LINKED(o->state)) {
+            if (pa_source_output_finish_move(o, s, save) < 0)
+                pa_source_output_fail_move(o);
 
+        }
         pa_source_output_unref(o);
     }
 
@@ -981,19 +1018,21 @@ void pa_source_post_direct(pa_source*s, pa_source_output *o, const pa_memchunk *
 }
 
 /* Called from main thread */
-int pa_source_update_rate(pa_source *s, uint32_t rate, bool passthrough) {
+int pa_source_reconfigure(pa_source *s, pa_sample_spec *spec, bool passthrough) {
     int ret;
-    uint32_t desired_rate;
+    pa_sample_spec desired_spec;
     uint32_t default_rate = s->default_sample_rate;
     uint32_t alternate_rate = s->alternate_sample_rate;
     bool default_rate_is_usable = false;
     bool alternate_rate_is_usable = false;
     bool avoid_resampling = s->core->avoid_resampling;
 
-    if (rate == s->sample_spec.rate)
+    /* We currently only try to reconfigure the sample rate */
+
+    if (pa_sample_spec_equal(spec, &s->sample_spec))
         return 0;
 
-    if (!s->update_rate && !s->monitor_of)
+    if (!s->reconfigure && !s->monitor_of)
         return -1;
 
     if (PA_UNLIKELY(default_rate == alternate_rate && !passthrough && !avoid_resampling)) {
@@ -1014,39 +1053,41 @@ int pa_source_update_rate(pa_source *s, uint32_t rate, bool passthrough) {
         }
     }
 
-    if (PA_UNLIKELY(!pa_sample_rate_valid(rate)))
+    if (PA_UNLIKELY(!pa_sample_spec_valid(spec)))
         return -1;
+
+    desired_spec = s->sample_spec;
 
     if (passthrough) {
         /* We have to try to use the source output rate */
-        desired_rate = rate;
+        desired_spec.rate = spec->rate;
 
-    } else if (avoid_resampling && (rate >= default_rate || rate >= alternate_rate)) {
+    } else if (avoid_resampling && (spec->rate >= default_rate || spec->rate >= alternate_rate)) {
         /* We just try to set the source output's sample rate if it's not too low */
-        desired_rate = rate;
+        desired_spec.rate = spec->rate;
 
-    } else if (default_rate == rate || alternate_rate == rate) {
+    } else if (default_rate == spec->rate || alternate_rate == spec->rate) {
         /* We can directly try to use this rate */
-        desired_rate = rate;
+        desired_spec.rate = spec->rate;
 
     } else {
         /* See if we can pick a rate that results in less resampling effort */
-        if (default_rate % 11025 == 0 && rate % 11025 == 0)
+        if (default_rate % 11025 == 0 && spec->rate % 11025 == 0)
             default_rate_is_usable = true;
-        if (default_rate % 4000 == 0 && rate % 4000 == 0)
+        if (default_rate % 4000 == 0 && spec->rate % 4000 == 0)
             default_rate_is_usable = true;
-        if (alternate_rate && alternate_rate % 11025 == 0 && rate % 11025 == 0)
+        if (alternate_rate % 11025 == 0 && spec->rate % 11025 == 0)
             alternate_rate_is_usable = true;
-        if (alternate_rate && alternate_rate % 4000 == 0 && rate % 4000 == 0)
+        if (alternate_rate % 4000 == 0 && spec->rate % 4000 == 0)
             alternate_rate_is_usable = true;
 
         if (alternate_rate_is_usable && !default_rate_is_usable)
-            desired_rate = alternate_rate;
+            desired_spec.rate = alternate_rate;
         else
-            desired_rate = default_rate;
+            desired_spec.rate = default_rate;
     }
 
-    if (desired_rate == s->sample_spec.rate)
+    if (pa_sample_spec_equal(&desired_spec, &s->sample_spec) && passthrough == pa_source_is_passthrough(s))
         return -1;
 
     if (!passthrough && pa_source_used_by(s) > 0)
@@ -1055,8 +1096,8 @@ int pa_source_update_rate(pa_source *s, uint32_t rate, bool passthrough) {
     pa_log_debug("Suspending source %s due to changing the sample rate.", s->name);
     pa_source_suspend(s, true, PA_SUSPEND_INTERNAL);
 
-    if (s->update_rate)
-        ret = s->update_rate(s, desired_rate);
+    if (s->reconfigure)
+        ret = s->reconfigure(s, &desired_spec, passthrough);
     else {
         /* This is a monitor source. */
 
@@ -1064,23 +1105,23 @@ int pa_source_update_rate(pa_source *s, uint32_t rate, bool passthrough) {
          * have no idea whether the behaviour with passthrough streams is
          * sensible. */
         if (!passthrough) {
-            uint32_t old_rate = s->sample_spec.rate;
+            pa_sample_spec old_spec = s->sample_spec;
 
-            s->sample_spec.rate = desired_rate;
-            ret = pa_sink_update_rate(s->monitor_of, desired_rate, false);
+            s->sample_spec = desired_spec;
+            ret = pa_sink_reconfigure(s->monitor_of, &desired_spec, false);
 
             if (ret < 0) {
                 /* Changing the sink rate failed, roll back the old rate for
                  * the monitor source. Why did we set the source rate before
-                 * calling pa_sink_update_rate(), you may ask. The reason is
-                 * that pa_sink_update_rate() tries to update the monitor
+                 * calling pa_sink_reconfigure(), you may ask. The reason is
+                 * that pa_sink_reconfigure() tries to update the monitor
                  * source rate, but we are already in the process of updating
                  * the monitor source rate, so there's a risk of entering an
                  * infinite loop. Setting the source rate before calling
-                 * pa_sink_update_rate() makes the rate == s->sample_spec.rate
+                 * pa_sink_reconfigure() makes the rate == s->sample_spec.rate
                  * check in the beginning of this function return early, so we
                  * avoid looping. */
-                s->sample_spec.rate = old_rate;
+                s->sample_spec = old_spec;
             }
         } else
             ret = -1;
@@ -2008,6 +2049,19 @@ unsigned pa_source_check_suspend(pa_source *s, pa_source_output *ignore) {
     return ret;
 }
 
+const char *pa_source_state_to_string(pa_source_state_t state) {
+    switch (state) {
+        case PA_SOURCE_INIT:          return "INIT";
+        case PA_SOURCE_IDLE:          return "IDLE";
+        case PA_SOURCE_RUNNING:       return "RUNNING";
+        case PA_SOURCE_SUSPENDED:     return "SUSPENDED";
+        case PA_SOURCE_UNLINKED:      return "UNLINKED";
+        case PA_SOURCE_INVALID_STATE: return "INVALID_STATE";
+    }
+
+    pa_assert_not_reached();
+}
+
 /* Called from the IO thread */
 static void sync_output_volumes_within_thread(pa_source *s) {
     pa_source_output *o;
@@ -2160,12 +2214,19 @@ int pa_source_process_msg(pa_msgobject *object, int code, void *userdata, int64_
             return 0;
 
         case PA_SOURCE_MESSAGE_SET_STATE: {
-
+            struct set_state_data *data = userdata;
             bool suspend_change =
-                (s->thread_info.state == PA_SOURCE_SUSPENDED && PA_SOURCE_IS_OPENED(PA_PTR_TO_UINT(userdata))) ||
-                (PA_SOURCE_IS_OPENED(s->thread_info.state) && PA_PTR_TO_UINT(userdata) == PA_SOURCE_SUSPENDED);
+                (s->thread_info.state == PA_SOURCE_SUSPENDED && PA_SOURCE_IS_OPENED(data->state)) ||
+                (PA_SOURCE_IS_OPENED(s->thread_info.state) && data->state == PA_SOURCE_SUSPENDED);
 
-            s->thread_info.state = PA_PTR_TO_UINT(userdata);
+            if (s->set_state_in_io_thread) {
+                int r;
+
+                if ((r = s->set_state_in_io_thread(s, data->state, data->suspend_cause)) < 0)
+                    return r;
+            }
+
+            s->thread_info.state = data->state;
 
             if (suspend_change) {
                 pa_source_output *o;
@@ -2239,15 +2300,6 @@ int pa_source_process_msg(pa_msgobject *object, int code, void *userdata, int64_
 
             /* Implementors need to overwrite this implementation! */
             return -1;
-
-        case PA_SOURCE_MESSAGE_SET_PORT:
-
-            pa_assert(userdata);
-            if (s->set_port) {
-                struct source_message_set_port *msg_data = userdata;
-                msg_data->ret = s->set_port(s, msg_data->port);
-            }
-            return 0;
 
         case PA_SOURCE_MESSAGE_UPDATE_VOLUME_AND_MUTE:
             /* This message is sent from IO-thread and handled in main thread. */
@@ -2617,7 +2669,6 @@ size_t pa_source_get_max_rewind(pa_source *s) {
 /* Called from main context */
 int pa_source_set_port(pa_source *s, const char *name, bool save) {
     pa_device_port *port;
-    int ret;
 
     pa_source_assert_ref(s);
     pa_assert_ctl_context();
@@ -2638,15 +2689,7 @@ int pa_source_set_port(pa_source *s, const char *name, bool save) {
         return 0;
     }
 
-    if (s->flags & PA_SOURCE_DEFERRED_VOLUME) {
-        struct source_message_set_port msg = { .port = port, .ret = 0 };
-        pa_assert_se(pa_asyncmsgq_send(s->asyncmsgq, PA_MSGOBJECT(s), PA_SOURCE_MESSAGE_SET_PORT, &msg, 0, NULL) == 0);
-        ret = msg.ret;
-    }
-    else
-        ret = s->set_port(s, port);
-
-    if (ret < 0)
+    if (s->set_port(s, port) < 0)
         return -PA_ERR_NOENTITY;
 
     pa_subscription_post(s->core, PA_SUBSCRIPTION_EVENT_SOURCE|PA_SUBSCRIPTION_EVENT_CHANGE, s->index);

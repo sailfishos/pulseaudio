@@ -31,8 +31,6 @@
 #include <pulsecore/log.h>
 #include <pulsecore/rtpoll.h>
 
-#include "module-remap-sink-symdef.h"
-
 PA_MODULE_AUTHOR("Lennart Poettering");
 PA_MODULE_DESCRIPTION("Virtual channel remapping sink");
 PA_MODULE_VERSION(PACKAGE_VERSION);
@@ -96,25 +94,13 @@ static int sink_process_msg(pa_msgobject *o, int code, void *data, int64_t offse
                 pa_bytes_to_usec(pa_memblockq_get_length(u->sink_input->thread_info.render_memblockq), &u->sink_input->sink->sample_spec);
 
             return 0;
-
-        case PA_SINK_MESSAGE_SET_STATE: {
-            pa_sink_state_t new_state = (pa_sink_state_t) PA_PTR_TO_UINT(data);
-
-            /* When set to running or idle for the first time, request a rewind
-             * of the master sink to make sure we are heard immediately */
-            if ((new_state == PA_SINK_IDLE || new_state == PA_SINK_RUNNING) && u->sink->thread_info.state == PA_SINK_INIT) {
-                pa_log_debug("Requesting rewind due to state change.");
-                pa_sink_input_request_rewind(u->sink_input, 0, false, true, true);
-            }
-            break;
-        }
     }
 
     return pa_sink_process_msg(o, code, data, offset, chunk);
 }
 
 /* Called from main context */
-static int sink_set_state(pa_sink *s, pa_sink_state_t state) {
+static int sink_set_state_in_main_thread(pa_sink *s, pa_sink_state_t state, pa_suspend_cause_t suspend_cause) {
     struct userdata *u;
 
     pa_sink_assert_ref(s);
@@ -125,6 +111,23 @@ static int sink_set_state(pa_sink *s, pa_sink_state_t state) {
         return 0;
 
     pa_sink_input_cork(u->sink_input, state == PA_SINK_SUSPENDED);
+    return 0;
+}
+
+/* Called from the IO thread. */
+static int sink_set_state_in_io_thread_cb(pa_sink *s, pa_sink_state_t new_state, pa_suspend_cause_t new_suspend_cause) {
+    struct userdata *u;
+
+    pa_assert(s);
+    pa_assert_se(u = s->userdata);
+
+    /* When set to running or idle for the first time, request a rewind
+     * of the master sink to make sure we are heard immediately */
+    if ((new_state == PA_SINK_IDLE || new_state == PA_SINK_RUNNING) && u->sink->thread_info.state == PA_SINK_INIT) {
+        pa_log_debug("Requesting rewind due to state change.");
+        pa_sink_input_request_rewind(u->sink_input, 0, false, true, true);
+    }
+
     return 0;
 }
 
@@ -412,7 +415,8 @@ int pa__init(pa_module*m) {
     }
 
     u->sink->parent.process_msg = sink_process_msg;
-    u->sink->set_state = sink_set_state;
+    u->sink->set_state_in_main_thread = sink_set_state_in_main_thread;
+    u->sink->set_state_in_io_thread = sink_set_state_in_io_thread_cb;
     u->sink->update_requested_latency = sink_update_requested_latency;
     u->sink->request_rewind = sink_request_rewind;
     u->sink->userdata = u;
@@ -423,7 +427,7 @@ int pa__init(pa_module*m) {
     pa_sink_input_new_data_init(&sink_input_data);
     sink_input_data.driver = __FILE__;
     sink_input_data.module = m;
-    pa_sink_input_new_data_set_sink(&sink_input_data, master, false);
+    pa_sink_input_new_data_set_sink(&sink_input_data, master, false, true);
     sink_input_data.origin_sink = u->sink;
     pa_proplist_sets(sink_input_data.proplist, PA_PROP_MEDIA_NAME, "Remapped Stream");
     pa_proplist_sets(sink_input_data.proplist, PA_PROP_MEDIA_ROLE, "filter");

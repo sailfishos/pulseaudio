@@ -111,19 +111,21 @@ int deny_severity = LOG_WARNING;
 int __padsp_disabled__ = 7;
 #endif
 
-static void signal_callback(pa_mainloop_api*m, pa_signal_event *e, int sig, void *userdata) {
+static void signal_callback(pa_mainloop_api* m, pa_signal_event *e, int sig, void *userdata) {
+    pa_module *module = NULL;
+
     pa_log_info("Got signal %s.", pa_sig2str(sig));
 
     switch (sig) {
 #ifdef SIGUSR1
         case SIGUSR1:
-            pa_module_load(userdata, "module-cli", NULL);
+            pa_module_load(&module, userdata, "module-cli", NULL);
             break;
 #endif
 
 #ifdef SIGUSR2
         case SIGUSR2:
-            pa_module_load(userdata, "module-cli-protocol-unix", NULL);
+            pa_module_load(&module, userdata, "module-cli-protocol-unix", NULL);
             break;
 #endif
 
@@ -395,7 +397,7 @@ int main(int argc, char *argv[]) {
     pa_log_set_level(PA_LOG_NOTICE);
     pa_log_set_flags(PA_LOG_COLORS|PA_LOG_PRINT_FILE|PA_LOG_PRINT_LEVEL, PA_LOG_RESET);
 
-#if defined(__linux__) && defined(__OPTIMIZE__)
+#if !defined(HAVE_BIND_NOW) && defined(__linux__) && defined(__OPTIMIZE__)
     /*
        Disable lazy relocations to make usage of external libraries
        more deterministic for our RT threads. We abuse __OPTIMIZE__ as
@@ -888,7 +890,7 @@ int main(int argc, char *argv[]) {
 
     pa_set_env_and_record("PULSE_INTERNAL", "1");
     pa_assert_se(chdir("/") == 0);
-    umask(0022);
+    umask(0077);
 
 #ifdef HAVE_SYS_RESOURCE_H
     set_all_rlimits(conf);

@@ -196,40 +196,6 @@ char *pa_card_list_to_string(pa_core *c) {
     return pa_strbuf_to_string_free(s);
 }
 
-static const char *sink_state_to_string(pa_sink_state_t state) {
-    switch (state) {
-        case PA_SINK_INIT:
-            return "INIT";
-        case PA_SINK_RUNNING:
-            return "RUNNING";
-        case PA_SINK_SUSPENDED:
-            return "SUSPENDED";
-        case PA_SINK_IDLE:
-            return "IDLE";
-        case PA_SINK_UNLINKED:
-            return "UNLINKED";
-        default:
-            return "INVALID";
-    }
-}
-
-static const char *source_state_to_string(pa_source_state_t state) {
-    switch (state) {
-        case PA_SOURCE_INIT:
-            return "INIT";
-        case PA_SOURCE_RUNNING:
-            return "RUNNING";
-        case PA_SOURCE_SUSPENDED:
-            return "SUSPENDED";
-        case PA_SOURCE_IDLE:
-            return "IDLE";
-        case PA_SOURCE_UNLINKED:
-            return "UNLINKED";
-        default:
-            return "INVALID";
-    }
-}
-
 char *pa_sink_list_to_string(pa_core *c) {
     pa_strbuf *s;
     pa_sink *sink;
@@ -246,6 +212,7 @@ char *pa_sink_list_to_string(pa_core *c) {
             v[PA_VOLUME_SNPRINT_VERBOSE_MAX],
             cm[PA_CHANNEL_MAP_SNPRINT_MAX], *t;
         const char *cmn;
+        char suspend_cause_buf[PA_SUSPEND_CAUSE_TO_STRING_BUF_SIZE];
 
         cmn = pa_channel_map_to_pretty_name(&sink->channel_map);
 
@@ -256,7 +223,7 @@ char *pa_sink_list_to_string(pa_core *c) {
             "\tdriver: <%s>\n"
             "\tflags: %s%s%s%s%s%s%s%s\n"
             "\tstate: %s\n"
-            "\tsuspend cause: %s%s%s%s\n"
+            "\tsuspend cause: %s\n"
             "\tpriority: %u\n"
             "\tvolume: %s\n"
             "\t        balance %0.2f\n"
@@ -283,11 +250,8 @@ char *pa_sink_list_to_string(pa_core *c) {
             sink->flags & PA_SINK_LATENCY ? "LATENCY " : "",
             sink->flags & PA_SINK_FLAT_VOLUME ? "FLAT_VOLUME " : "",
             sink->flags & PA_SINK_DYNAMIC_LATENCY ? "DYNAMIC_LATENCY" : "",
-            sink_state_to_string(pa_sink_get_state(sink)),
-            sink->suspend_cause & PA_SUSPEND_USER ? "USER " : "",
-            sink->suspend_cause & PA_SUSPEND_APPLICATION ? "APPLICATION " : "",
-            sink->suspend_cause & PA_SUSPEND_IDLE ? "IDLE " : "",
-            sink->suspend_cause & PA_SUSPEND_SESSION ? "SESSION" : "",
+            pa_sink_state_to_string(pa_sink_get_state(sink)),
+            pa_suspend_cause_to_string(sink->suspend_cause, suspend_cause_buf),
             sink->priority,
             pa_cvolume_snprint_verbose(cv,
                                        sizeof(cv),
@@ -362,6 +326,7 @@ char *pa_source_list_to_string(pa_core *c) {
             v[PA_VOLUME_SNPRINT_VERBOSE_MAX],
             cm[PA_CHANNEL_MAP_SNPRINT_MAX], *t;
         const char *cmn;
+        char suspend_cause_buf[PA_SUSPEND_CAUSE_TO_STRING_BUF_SIZE];
 
         cmn = pa_channel_map_to_pretty_name(&source->channel_map);
 
@@ -372,7 +337,7 @@ char *pa_source_list_to_string(pa_core *c) {
             "\tdriver: <%s>\n"
             "\tflags: %s%s%s%s%s%s%s\n"
             "\tstate: %s\n"
-            "\tsuspend cause: %s%s%s%s\n"
+            "\tsuspend cause: %s\n"
             "\tpriority: %u\n"
             "\tvolume: %s\n"
             "\t        balance %0.2f\n"
@@ -396,11 +361,8 @@ char *pa_source_list_to_string(pa_core *c) {
             source->flags & PA_SOURCE_DECIBEL_VOLUME ? "DECIBEL_VOLUME " : "",
             source->flags & PA_SOURCE_LATENCY ? "LATENCY " : "",
             source->flags & PA_SOURCE_DYNAMIC_LATENCY ? "DYNAMIC_LATENCY" : "",
-            source_state_to_string(pa_source_get_state(source)),
-            source->suspend_cause & PA_SUSPEND_USER ? "USER " : "",
-            source->suspend_cause & PA_SUSPEND_APPLICATION ? "APPLICATION " : "",
-            source->suspend_cause & PA_SUSPEND_IDLE ? "IDLE " : "",
-            source->suspend_cause & PA_SUSPEND_SESSION ? "SESSION" : "",
+            pa_source_state_to_string(pa_source_get_state(source)),
+            pa_suspend_cause_to_string(source->suspend_cause, suspend_cause_buf),
             source->priority,
             pa_cvolume_snprint_verbose(cv,
                                        sizeof(cv),

@@ -180,7 +180,7 @@ void pa_sink_input_new_data_set_muted(pa_sink_input_new_data *data, bool mute) {
     data->muted = mute;
 }
 
-bool pa_sink_input_new_data_set_sink(pa_sink_input_new_data *data, pa_sink *s, bool save) {
+bool pa_sink_input_new_data_set_sink(pa_sink_input_new_data *data, pa_sink *s, bool save, bool requested_by_application) {
     bool ret = true;
     pa_idxset *formats = NULL;
 
@@ -191,6 +191,7 @@ bool pa_sink_input_new_data_set_sink(pa_sink_input_new_data *data, pa_sink *s, b
         /* We're not working with the extended API */
         data->sink = s;
         data->save_sink = save;
+        data->sink_requested_by_application = requested_by_application;
     } else {
         /* Extended API: let's see if this sink supports the formats the client can provide */
         formats = pa_sink_check_formats(s, data->req_formats);
@@ -199,6 +200,7 @@ bool pa_sink_input_new_data_set_sink(pa_sink_input_new_data *data, pa_sink *s, b
             /* Sink supports at least one of the requested formats */
             data->sink = s;
             data->save_sink = save;
+            data->sink_requested_by_application = requested_by_application;
             if (data->nego_formats)
                 pa_idxset_free(data->nego_formats, (pa_free_cb_t) pa_format_info_free);
             data->nego_formats = formats;
@@ -224,7 +226,7 @@ bool pa_sink_input_new_data_set_formats(pa_sink_input_new_data *data, pa_idxset 
 
     if (data->sink) {
         /* Trigger format negotiation */
-        return pa_sink_input_new_data_set_sink(data, data->sink, data->save_sink);
+        return pa_sink_input_new_data_set_sink(data, data->sink, data->save_sink, data->sink_requested_by_application);
     }
 
     return true;
@@ -329,7 +331,7 @@ int pa_sink_input_new(
     if (!data->sink) {
         pa_sink *sink = pa_namereg_get(core, NULL, PA_NAMEREG_SINK);
         pa_return_val_if_fail(sink, -PA_ERR_NOENTITY);
-        pa_sink_input_new_data_set_sink(data, sink, false);
+        pa_sink_input_new_data_set_sink(data, sink, false, false);
     }
 
     /* If something didn't pick a format for us, pick the top-most format since
@@ -338,6 +340,11 @@ int pa_sink_input_new(
         data->format = pa_format_info_copy(pa_idxset_first(data->nego_formats, NULL));
 
     if (PA_LIKELY(data->format)) {
+        /* We know that data->sink is set, because data->format has been set.
+         * data->format is set after a successful format negotiation, and that
+         * can't happen before data->sink has been set. */
+        pa_assert(data->sink);
+
         pa_log_debug("Negotiated format: %s", pa_format_info_snprint(fmt, sizeof(fmt), data->format));
     } else {
         pa_format_info *format;
@@ -357,7 +364,7 @@ int pa_sink_input_new(
 
     /* Routing is done. We have a sink and a format. */
 
-    if (data->volume_is_set && pa_format_info_is_pcm(data->format)) {
+    if (data->volume_is_set && !pa_sink_input_new_data_is_passthrough(data)) {
         /* If volume is set, we need to save the original data->channel_map,
          * so that we can remap the volume from the original channel map to the
          * final channel map of the stream in case data->channel_map gets
@@ -365,6 +372,10 @@ int pa_sink_input_new(
         r = pa_stream_get_volume_channel_map(&data->volume, data->channel_map_is_set ? &data->channel_map : NULL, data->format, &volume_map);
         if (r < 0)
             return r;
+    } else {
+        /* Initialize volume_map to invalid state. We check the state later to
+         * determine if volume remapping is needed. */
+        pa_channel_map_init(&volume_map);
     }
 
     /* Now populate the sample spec and channel map according to the final
@@ -396,7 +407,7 @@ int pa_sink_input_new(
     if (!data->volume_writable)
         data->save_volume = false;
 
-    if (data->volume_is_set)
+    if (pa_channel_map_valid(&volume_map))
         /* The original volume channel map may be different than the final
          * stream channel map, so remapping may be needed. */
         pa_cvolume_remap(&data->volume, &volume_map, &data->channel_map);
@@ -410,7 +421,7 @@ int pa_sink_input_new(
            module-suspend-on-idle can resume a sink */
 
         pa_log_info("Trying to change sample rate");
-        if (pa_sink_update_rate(data->sink, data->sample_spec.rate, pa_sink_input_new_data_is_passthrough(data)) >= 0)
+        if (pa_sink_reconfigure(data->sink, &data->sample_spec, pa_sink_input_new_data_is_passthrough(data)) >= 0)
             pa_log_info("Rate changed to %u Hz", data->sink->sample_spec.rate);
     }
 
@@ -474,6 +485,7 @@ int pa_sink_input_new(
     i->driver = pa_xstrdup(pa_path_get_filename(data->driver));
     i->module = data->module;
     i->sink = data->sink;
+    i->sink_requested_by_application = data->sink_requested_by_application;
     i->origin_sink = data->origin_sink;
     i->client = data->client;
 
@@ -609,7 +621,7 @@ static void sink_input_set_state(pa_sink_input *i, pa_sink_input_state_t state) 
             !pa_sample_spec_equal(&i->sample_spec, &i->sink->sample_spec)) {
             /* We were uncorked and the sink was not playing anything -- let's try
              * to update the sample rate to avoid resampling */
-            pa_sink_update_rate(i->sink, i->sample_spec.rate, pa_sink_input_is_passthrough(i));
+            pa_sink_reconfigure(i->sink, &i->sample_spec, pa_sink_input_is_passthrough(i));
         }
 
         pa_assert_se(pa_asyncmsgq_send(i->sink->asyncmsgq, PA_MSGOBJECT(i), PA_SINK_INPUT_MESSAGE_SET_STATE, PA_UINT_TO_PTR(state), 0, NULL) == 0);
@@ -1526,7 +1538,7 @@ void pa_sink_input_update_proplist(pa_sink_input *i, pa_update_mode_t mode, pa_p
     pa_assert_ctl_context();
 
     switch (mode) {
-        case PA_UPDATE_SET: {
+        case PA_UPDATE_SET:
             /* Delete everything that is not in p. */
             for (state = NULL; (key = pa_proplist_iterate(i->proplist, &state));) {
                 if (!pa_proplist_contains(p, key))
@@ -1534,18 +1546,14 @@ void pa_sink_input_update_proplist(pa_sink_input *i, pa_update_mode_t mode, pa_p
             }
 
             /* Fall through. */
-        }
-
-        case PA_UPDATE_REPLACE: {
+        case PA_UPDATE_REPLACE:
             for (state = NULL; (key = pa_proplist_iterate(p, &state));) {
                 pa_proplist_get(p, key, (const void **) &value, &nbytes);
                 pa_sink_input_set_property_arbitrary(i, key, value, nbytes);
             }
 
             break;
-        }
-
-        case PA_UPDATE_MERGE: {
+        case PA_UPDATE_MERGE:
             for (state = NULL; (key = pa_proplist_iterate(p, &state));) {
                 if (pa_proplist_contains(i->proplist, key))
                     continue;
@@ -1555,7 +1563,6 @@ void pa_sink_input_update_proplist(pa_sink_input *i, pa_update_mode_t mode, pa_p
             }
 
             break;
-        }
     }
 }
 
@@ -1741,6 +1748,7 @@ int pa_sink_input_start_move(pa_sink_input *i) {
     pa_cvolume_remap(&i->volume_factor_sink, &i->sink->channel_map, &i->channel_map);
 
     i->sink = NULL;
+    i->sink_requested_by_application = false;
 
     pa_sink_input_unref(i);
 
@@ -1905,7 +1913,7 @@ int pa_sink_input_finish_move(pa_sink_input *i, pa_sink *dest, bool save) {
            SINK_INPUT_MOVE_FINISH hook */
 
         pa_log_info("Trying to change sample rate");
-        if (pa_sink_update_rate(dest, i->sample_spec.rate, pa_sink_input_is_passthrough(i)) >= 0)
+        if (pa_sink_reconfigure(dest, &i->sample_spec, pa_sink_input_is_passthrough(i)) >= 0)
             pa_log_info("Rate changed to %u Hz", dest->sample_spec.rate);
     }
 

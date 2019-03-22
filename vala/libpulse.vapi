@@ -1078,6 +1078,9 @@ namespace PulseAudio {
                 public Operation? set_sink_input_volume(uint32 idx, CVolume volume, SuccessCb? cb = null);
                 public Operation? set_sink_input_mute(uint32 idx, bool mute, SuccessCb? cb = null);
 
+                public Operation? set_source_output_volume(uint32 idx, CVolume volume, SuccessCb? cb = null);
+                public Operation? set_source_output_mute(uint32 idx, bool mute, SuccessCb? cb = null);
+
                 public Operation? kill_sink_input(uint32 idx, SuccessCb? cb = null);
 
                 public Operation? get_source_output_info(uint32 idx, SourceOutputInfoCb cb);
@@ -1285,6 +1288,7 @@ namespace PulseAudio {
                 public uint32 n_volume_steps;
                 public uint32 card;
                 public uint32 n_ports;
+                [CCode (array_length_cname="n_ports")]
                 public SinkPortInfo*[] ports;
                 public SinkPortInfo* active_port;
         }
@@ -1318,6 +1322,7 @@ namespace PulseAudio {
                 public uint32 n_volume_steps;
                 public uint32 card;
                 public uint32 n_ports;
+                [CCode (array_length_cname="n_ports")]
                 public SourcePortInfo*[] ports;
                 public SourcePortInfo* active_port;
         }
@@ -1404,7 +1409,7 @@ namespace PulseAudio {
                 public SampleSpec sample_spec;
                 public ChannelMap channel_map;
                 public uint32 buffer_usec;
-                public uint32 sink_usec;
+                public uint32 source_usec;
                 public string resample_method;
                 public string driver;
                 public Proplist proplist;

@@ -115,7 +115,6 @@ struct pa_sink {
 
     pa_hashmap *ports;
     pa_device_port *active_port;
-    pa_atomic_t mixer_dirty;
 
     /* The latency offset is inherited from the currently active port */
     int64_t port_latency_offset;
@@ -124,10 +123,31 @@ struct pa_sink {
 
     bool set_mute_in_progress;
 
-    /* Called when the main loop requests a state change. Called from
-     * main loop context. If returns -1 the state change will be
-     * inhibited */
-    int (*set_state)(pa_sink *s, pa_sink_state_t state); /* may be NULL */
+    /* Callbacks for doing things when the sink state and/or suspend cause is
+     * changed. It's fine to set either or both of the callbacks to NULL if the
+     * implementation doesn't have anything to do on state or suspend cause
+     * changes.
+     *
+     * set_state_in_main_thread() is called first. The callback is allowed to
+     * report failure if and only if the sink changes its state from
+     * SUSPENDED to IDLE or RUNNING. (FIXME: It would make sense to allow
+     * failure also when changing state from INIT to IDLE or RUNNING, but
+     * currently that will crash pa_sink_put().) If
+     * set_state_in_main_thread() fails, set_state_in_io_thread() won't be
+     * called.
+     *
+     * If set_state_in_main_thread() is successful (or not set), then
+     * set_state_in_io_thread() is called. Again, failure is allowed if and
+     * only if the sink changes state from SUSPENDED to IDLE or RUNNING. If
+     * set_state_in_io_thread() fails, then set_state_in_main_thread() is
+     * called again, this time with the state parameter set to SUSPENDED and
+     * the suspend_cause parameter set to 0.
+     *
+     * pa_sink.state, pa_sink.thread_info.state and pa_sink.suspend_cause
+     * are updated only after all the callback calls. In case of failure, the
+     * state is set to SUSPENDED and the suspend cause is set to 0. */
+    int (*set_state_in_main_thread)(pa_sink *s, pa_sink_state_t state, pa_suspend_cause_t suspend_cause); /* may be NULL */
+    int (*set_state_in_io_thread)(pa_sink *s, pa_sink_state_t state, pa_suspend_cause_t suspend_cause); /* may be NULL */
 
     /* Sink drivers that support hardware volume may set this
      * callback. This is called when the current volume needs to be
@@ -230,8 +250,8 @@ struct pa_sink {
      * thread context. */
     pa_sink_cb_t update_requested_latency; /* may be NULL */
 
-    /* Called whenever the port shall be changed. Called from IO
-     * thread if deferred volumes are enabled, and main thread otherwise. */
+    /* Called whenever the port shall be changed. Called from the main
+     * thread. */
     int (*set_port)(pa_sink *s, pa_device_port *port); /* may be NULL */
 
     /* Called to get the list of formats supported by the sink, sorted
@@ -244,9 +264,9 @@ struct pa_sink {
      * set). Makes a copy of the formats passed in. */
     bool (*set_formats)(pa_sink *s, pa_idxset *formats); /* may be NULL */
 
-    /* Called whenever the sampling frequency shall be changed. Called from
+    /* Called whenever device parameters need to be changed. Called from
      * main thread. */
-    int (*update_rate)(pa_sink *s, uint32_t rate);
+    int (*reconfigure)(pa_sink *s, pa_sample_spec *spec, bool passthrough);
 
     /* Contains copies of the above data so that the real-time worker
      * thread can work without access locking */
@@ -335,7 +355,6 @@ typedef enum pa_sink_message {
     PA_SINK_MESSAGE_GET_MAX_REQUEST,
     PA_SINK_MESSAGE_SET_MAX_REWIND,
     PA_SINK_MESSAGE_SET_MAX_REQUEST,
-    PA_SINK_MESSAGE_SET_PORT,
     PA_SINK_MESSAGE_UPDATE_VOLUME_AND_MUTE,
     PA_SINK_MESSAGE_SET_PORT_LATENCY_OFFSET,
     PA_SINK_MESSAGE_MAX
@@ -422,7 +441,7 @@ unsigned pa_device_init_priority(pa_proplist *p);
 
 /**** May be called by everyone, from main context */
 
-int pa_sink_update_rate(pa_sink *s, uint32_t rate, bool passthrough);
+int pa_sink_reconfigure(pa_sink *s, pa_sample_spec *spec, bool passthrough);
 void pa_sink_set_port_latency_offset(pa_sink *s, int64_t offset);
 
 /* The returned value is supposed to be in the time domain of the sound card! */
@@ -462,7 +481,6 @@ bool pa_sink_get_mute(pa_sink *sink, bool force_refresh);
 bool pa_sink_update_proplist(pa_sink *s, pa_update_mode_t mode, pa_proplist *p);
 
 int pa_sink_set_port(pa_sink *s, const char *name, bool save);
-void pa_sink_set_mixer_dirty(pa_sink *s, bool is_dirty);
 
 unsigned pa_sink_linked_by(pa_sink *s); /* Number of connected streams */
 unsigned pa_sink_used_by(pa_sink *s); /* Number of connected streams which are not corked */
@@ -475,6 +493,8 @@ unsigned pa_sink_used_by(pa_sink *s); /* Number of connected streams which are n
 unsigned pa_sink_check_suspend(pa_sink *s, pa_sink_input *ignore_input, pa_source_output *ignore_output);
 
 #define pa_sink_get_state(s) ((s)->state)
+
+const char *pa_sink_state_to_string(pa_sink_state_t state);
 
 /* Moves all inputs away, and stores them in pa_queue */
 pa_queue *pa_sink_move_all_start(pa_sink *s, pa_queue *q);

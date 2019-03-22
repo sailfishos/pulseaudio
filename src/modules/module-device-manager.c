@@ -49,8 +49,6 @@
 #include <pulsecore/database.h>
 #include <pulsecore/tagstruct.h>
 
-#include "module-device-manager-symdef.h"
-
 PA_MODULE_AUTHOR("Colin Guthrie");
 PA_MODULE_DESCRIPTION("Keep track of devices (and their descriptions) both past and present and prioritise by role");
 PA_MODULE_VERSION(PACKAGE_VERSION);
@@ -658,7 +656,8 @@ static void route_sink_input(struct userdata *u, pa_sink_input *si) {
     pa_assert(u);
     pa_assert(u->do_routing);
 
-    if (si->save_sink)
+    /* Don't override user or application routing requests. */
+    if (si->save_sink || si->sink_requested_by_application)
         return;
 
     /* Skip this if it is already in the process of being moved anyway */
@@ -729,7 +728,8 @@ static void route_source_output(struct userdata *u, pa_source_output *so) {
     pa_assert(u);
     pa_assert(u->do_routing);
 
-    if (so->save_source)
+    /* Don't override user or application routing requests. */
+    if (so->save_source || so->source_requested_by_application)
         return;
 
     if (so->direct_on_input)
@@ -996,7 +996,7 @@ static pa_hook_result_t sink_input_new_hook_callback(pa_core *c, pa_sink_input_n
                 pa_sink *sink;
 
                 if ((sink = pa_idxset_get_by_index(u->core->sinks, device_index))) {
-                    if (!pa_sink_input_new_data_set_sink(new_data, sink, false))
+                    if (!pa_sink_input_new_data_set_sink(new_data, sink, false, false))
                         pa_log_debug("Not restoring device for stream because no supported format was found");
                 }
             }
@@ -1036,7 +1036,7 @@ static pa_hook_result_t source_output_new_hook_callback(pa_core *c, pa_source_ou
                 pa_source *source;
 
                 if ((source = pa_idxset_get_by_index(u->core->sources, device_index)))
-                    if (!pa_source_output_new_data_set_source(new_data, source, false))
+                    if (!pa_source_output_new_data_set_source(new_data, source, false, false))
                         pa_log_debug("Not restoring device for stream because no supported format was found");
             }
         }

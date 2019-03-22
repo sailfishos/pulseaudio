@@ -51,8 +51,6 @@
 #include <pulsecore/sample-util.h>
 #include <pulsecore/ltdl-helper.h>
 
-#include "module-echo-cancel-symdef.h"
-
 PA_MODULE_AUTHOR("Wim Taymans");
 PA_MODULE_DESCRIPTION("Echo Cancellation");
 PA_MODULE_VERSION(PACKAGE_VERSION);
@@ -184,6 +182,7 @@ struct userdata;
 
 struct pa_echo_canceller_msg {
     pa_msgobject parent;
+    bool dead;
     struct userdata *userdata;
 };
 
@@ -459,26 +458,13 @@ static int sink_process_msg_cb(pa_msgobject *o, int code, void *data, int64_t of
                 pa_bytes_to_usec(pa_memblockq_get_length(u->sink_input->thread_info.render_memblockq), &u->sink_input->sink->sample_spec);
 
             return 0;
-
-        case PA_SINK_MESSAGE_SET_STATE: {
-            pa_sink_state_t new_state = (pa_sink_state_t) PA_PTR_TO_UINT(data);
-
-            /* When set to running or idle for the first time, request a rewind
-             * of the master sink to make sure we are heard immediately */
-            if ((new_state == PA_SINK_IDLE || new_state == PA_SINK_RUNNING) && u->sink->thread_info.state == PA_SINK_INIT) {
-                pa_log_debug("Requesting rewind due to state change.");
-                pa_sink_input_request_rewind(u->sink_input, 0, false, true, true);
-            }
-            break;
-        }
-
     }
 
     return pa_sink_process_msg(o, code, data, offset, chunk);
 }
 
 /* Called from main context */
-static int source_set_state_cb(pa_source *s, pa_source_state_t state) {
+static int source_set_state_in_main_thread_cb(pa_source *s, pa_source_state_t state, pa_suspend_cause_t suspend_cause) {
     struct userdata *u;
 
     pa_source_assert_ref(s);
@@ -503,7 +489,7 @@ static int source_set_state_cb(pa_source *s, pa_source_state_t state) {
 }
 
 /* Called from main context */
-static int sink_set_state_cb(pa_sink *s, pa_sink_state_t state) {
+static int sink_set_state_in_main_thread_cb(pa_sink *s, pa_sink_state_t state, pa_suspend_cause_t suspend_cause) {
     struct userdata *u;
 
     pa_sink_assert_ref(s);
@@ -522,6 +508,23 @@ static int sink_set_state_cb(pa_sink *s, pa_sink_state_t state) {
         pa_sink_input_cork(u->sink_input, false);
     } else if (state == PA_SINK_SUSPENDED) {
         pa_sink_input_cork(u->sink_input, true);
+    }
+
+    return 0;
+}
+
+/* Called from the IO thread. */
+static int sink_set_state_in_io_thread_cb(pa_sink *s, pa_sink_state_t new_state, pa_suspend_cause_t new_suspend_cause) {
+    struct userdata *u;
+
+    pa_assert(s);
+    pa_assert_se(u = s->userdata);
+
+    /* When set to running or idle for the first time, request a rewind
+     * of the master sink to make sure we are heard immediately */
+    if ((new_state == PA_SINK_IDLE || new_state == PA_SINK_RUNNING) && u->sink->thread_info.state == PA_SINK_INIT) {
+        pa_log_debug("Requesting rewind due to state change.");
+        pa_sink_input_request_rewind(u->sink_input, 0, false, true, true);
     }
 
     return 0;
@@ -1553,6 +1556,20 @@ static int canceller_process_msg_cb(pa_msgobject *o, int code, void *userdata, i
     pa_assert(o);
 
     msg = PA_ECHO_CANCELLER_MSG(o);
+
+    /* When the module is unloaded, there may still remain queued messages for
+     * the canceller. Messages are sent to the main thread using the master
+     * source's asyncmsgq, and that message queue isn't (and can't be, at least
+     * with the current asyncmsgq API) cleared from the canceller messages when
+     * module-echo-cancel is unloaded.
+     *
+     * The userdata may already have been freed at this point, but the
+     * asyncmsgq holds a reference to the pa_echo_canceller_msg object, which
+     * contains a flag to indicate that all remaining messages have to be
+     * ignored. */
+    if (msg->dead)
+        return 0;
+
     u = msg->userdata;
 
     switch (code) {
@@ -1862,7 +1879,7 @@ int pa__init(pa_module*m) {
     }
 
     u->source->parent.process_msg = source_process_msg_cb;
-    u->source->set_state = source_set_state_cb;
+    u->source->set_state_in_main_thread = source_set_state_in_main_thread_cb;
     u->source->update_requested_latency = source_update_requested_latency_cb;
     pa_source_set_set_mute_callback(u->source, source_set_mute_cb);
     if (!u->use_volume_sharing) {
@@ -1912,7 +1929,8 @@ int pa__init(pa_module*m) {
     }
 
     u->sink->parent.process_msg = sink_process_msg_cb;
-    u->sink->set_state = sink_set_state_cb;
+    u->sink->set_state_in_main_thread = sink_set_state_in_main_thread_cb;
+    u->sink->set_state_in_io_thread = sink_set_state_in_io_thread_cb;
     u->sink->update_requested_latency = sink_update_requested_latency_cb;
     u->sink->request_rewind = sink_request_rewind_cb;
     pa_sink_set_set_mute_callback(u->sink, sink_set_mute_cb);
@@ -1928,7 +1946,7 @@ int pa__init(pa_module*m) {
     pa_source_output_new_data_init(&source_output_data);
     source_output_data.driver = __FILE__;
     source_output_data.module = m;
-    pa_source_output_new_data_set_source(&source_output_data, source_master, false);
+    pa_source_output_new_data_set_source(&source_output_data, source_master, false, true);
     source_output_data.destination_source = u->source;
 
     pa_proplist_sets(source_output_data.proplist, PA_PROP_MEDIA_NAME, "Echo-Cancel Source Stream");
@@ -1967,7 +1985,7 @@ int pa__init(pa_module*m) {
     pa_sink_input_new_data_init(&sink_input_data);
     sink_input_data.driver = __FILE__;
     sink_input_data.module = m;
-    pa_sink_input_new_data_set_sink(&sink_input_data, sink_master, false);
+    pa_sink_input_new_data_set_sink(&sink_input_data, sink_master, false, true);
     sink_input_data.origin_sink = u->sink;
     pa_proplist_sets(sink_input_data.proplist, PA_PROP_MEDIA_NAME, "Echo-Cancel Sink Stream");
     pa_proplist_sets(sink_input_data.proplist, PA_PROP_MEDIA_ROLE, "filter");
@@ -2149,6 +2167,11 @@ void pa__done(pa_module*m) {
         if (u->ec->done)
             u->ec->done(u->ec);
 
+        if (u->ec->msg) {
+            u->ec->msg->dead = true;
+            pa_echo_canceller_msg_unref(u->ec->msg);
+        }
+
         pa_xfree(u->ec);
     }
 
@@ -2327,6 +2350,8 @@ int main(int argc, char* argv[]) {
     }
 
     u.ec->done(u.ec);
+    u.ec->msg->dead = true;
+    pa_echo_canceller_msg_unref(u.ec->msg);
 
 out:
     if (u.captured_file)

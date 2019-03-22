@@ -27,7 +27,10 @@
 #include <pulsecore/device-port.h>
 #include <pulsecore/hashmap.h>
 
-#include "module-switch-on-port-available-symdef.h"
+PA_MODULE_AUTHOR("David Henningsson");
+PA_MODULE_DESCRIPTION("Switches ports and profiles when devices are plugged/unplugged");
+PA_MODULE_LOAD_ONCE(true);
+PA_MODULE_VERSION(PACKAGE_VERSION);
 
 struct card_info {
     struct userdata *userdata;
@@ -225,17 +228,17 @@ static struct port_pointers find_port_pointers(pa_device_port *port) {
 }
 
 /* Switches to a port, switching profiles if necessary or preferred */
-static bool switch_to_port(pa_device_port *port) {
+static void switch_to_port(pa_device_port *port) {
     struct port_pointers pp = find_port_pointers(port);
 
     if (pp.is_port_active)
-        return true; /* Already selected */
+        return; /* Already selected */
 
     pa_log_debug("Trying to switch to port %s", port->name);
     if (!pp.is_preferred_profile_active) {
         if (try_to_switch_profile(port) < 0) {
             if (!pp.is_possible_profile_active)
-                return false;
+                return;
         }
         else
             /* Now that profile has changed, our sink and source pointers must be updated */
@@ -246,17 +249,16 @@ static bool switch_to_port(pa_device_port *port) {
         pa_source_set_port(pp.source, port->name, false);
     if (pp.sink)
         pa_sink_set_port(pp.sink, port->name, false);
-    return true;
 }
 
 /* Switches away from a port, switching profiles if necessary or preferred */
-static bool switch_from_port(pa_device_port *port) {
+static void switch_from_port(pa_device_port *port) {
     struct port_pointers pp = find_port_pointers(port);
     pa_device_port *p, *best_port = NULL;
     void *state;
 
     if (!pp.is_port_active)
-        return true; /* Already deselected */
+        return; /* Already deselected */
 
     /* Try to find a good enough port to switch to */
     PA_HASHMAP_FOREACH(p, port->card->ports, state)
@@ -267,9 +269,7 @@ static bool switch_from_port(pa_device_port *port) {
     pa_log_debug("Trying to switch away from port %s, found %s", port->name, best_port ? best_port->name : "no better option");
 
     if (best_port)
-        return switch_to_port(best_port);
-
-    return false;
+        switch_to_port(best_port);
 }
 
 
@@ -281,9 +281,12 @@ static pa_hook_result_t port_available_hook_callback(pa_core *c, pa_device_port 
         return PA_HOOK_OK;
     }
 
-    if (pa_idxset_size(port->card->sinks) == 0 && pa_idxset_size(port->card->sources) == 0)
-        /* This card is not initialized yet. We'll handle it in
-           sink_new / source_new callbacks later. */
+    /* Our profile switching logic caused trouble with bluetooth headsets (see
+     * https://bugs.freedesktop.org/show_bug.cgi?id=107044) and
+     * module-bluetooth-policy takes care of automatic profile switching
+     * anyway, so we ignore bluetooth cards in
+     * module-switch-on-port-available. */
+    if (pa_safe_streq(pa_proplist_gets(port->card->proplist, PA_PROP_DEVICE_BUS), "bluetooth"))
         return PA_HOOK_OK;
 
     switch (port->available) {
