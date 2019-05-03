@@ -110,7 +110,8 @@ export CXXFLAGS="$CXXFLAGS -mfpu=neon"
 %endif
            --disable-openssl \
            --disable-gconf \
-           --disable-esound
+           --disable-esound \
+           --with-database=simple
 
 make %{?jobs:-j%jobs}
 
