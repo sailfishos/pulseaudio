@@ -1,0 +1,17 @@
+# System-wide mode to use before user session
+
+[Unit]
+Description=PulseAudio (system-wide mode)
+DefaultDependencies=no
+Requires=dbus.socket
+RefuseManualStart=yes
+Before=multi-user.target systemd-user-sessions.service
+PartOf=emergency-call.target
+
+[Service]
+Type=forking
+PIDFile=%t/pulse/pid
+EnvironmentFile=-/etc/sysconfig/pulseaudio
+ExecStart=/usr/bin/pulseaudio --daemonize --system --disallow-module-loading $CONFIG
+Restart=always
+RestartSec=1

@@ -16,10 +16,16 @@ Source1:    90-pulse.conf
 Source2:    pulseaudio.service
 Source3:    50-sfos.daemon.conf
 Source4:    50-sfos.client.conf
+Source5:    pulseaudio-system.service
 Requires:   udev
 Requires:   libsbc >= 1.0
 Requires(post): /sbin/ldconfig
 Requires(postun): /sbin/ldconfig
+# system-wide mode %pre
+Requires(pre): /usr/bin/getent
+Requires(pre): /usr/sbin/groupadd
+Requires(pre): /usr/sbin/useradd
+
 BuildRequires:  pkgconfig(alsa) >= 1.0.24
 BuildRequires:  pkgconfig(dbus-1) >= 1.4.12
 BuildRequires:  pkgconfig(glib-2.0) >= 2.4.0
@@ -130,6 +136,10 @@ install -m 644 %{SOURCE3} %{buildroot}/%{_sysconfdir}/pulse/daemon.conf.d
 install -d %{buildroot}/%{_sysconfdir}/pulse/client.conf.d
 install -m 644 %{SOURCE4} %{buildroot}/%{_sysconfdir}/pulse/client.conf.d
 
+# system-wide mode configuration
+install -d %{buildroot}/usr/lib/systemd/system
+install -m 644 %{SOURCE5} %{buildroot}/usr/lib/systemd/system/pulseaudio.service
+
 mkdir -p %{buildroot}%{_docdir}/%{name}-%{version}
 install -m0644 README %{buildroot}%{_docdir}/%{name}-%{version}
 
@@ -137,6 +147,17 @@ install -m0644 README %{buildroot}%{_docdir}/%{name}-%{version}
 
 %fdupes  %{buildroot}/%{_datadir}
 %fdupes  %{buildroot}/%{_includedir}
+
+%pre
+# system-wide mode needs an user and two groups
+if ! getent passwd pulse > /dev/null ; then
+    useradd -rUG audio,bluetooth -d /run/pulse -s /sbin/nologin pulse || :
+fi
+if ! getent group pulse-access > /dev/null ; then
+    groupadd -rf pulse-access || :
+    usermod -G pulse-access -a root || :
+    usermod -G pulse-access -a nemo || :
+fi
 
 %post -p /sbin/ldconfig
 
@@ -147,7 +168,6 @@ install -m0644 README %{buildroot}%{_docdir}/%{name}-%{version}
 %license GPL LGPL LICENSE
 %if ! %{with X11}
 %endif
-%exclude %{_sysconfdir}/dbus-1/system.d/pulseaudio-system.conf
 %config(noreplace) %{_sysconfdir}/pulse/*.conf
 %config(noreplace) %{_sysconfdir}/pulse/*.pa
 %config(noreplace) %{_sysconfdir}/security/limits.d/90-pulse.conf
@@ -270,6 +290,9 @@ install -m0644 README %{buildroot}%{_docdir}/%{name}-%{version}
 %{_libexecdir}/pulse/gsettings-helper
 %{_datadir}/GConf/gsettings/pulseaudio.convert
 %{_datadir}/glib-2.0/schemas/org.freedesktop.pulseaudio.gschema.xml
+# system-wide mode
+%{_libdir}/systemd/system/pulseaudio.service
+%config %{_sysconfdir}/dbus-1/system.d/pulseaudio-system.conf
 
 %if %{with X11}
 %files module-x11
