@@ -69,7 +69,7 @@ Requires:   %{name} = %{version}-%{release}
 Requires:   /bin/sed
 
 %description module-x11
-Description: %{summary}
+%{summary}.
 
 %package devel
 Summary:    PulseAudio Development headers and libraries
@@ -77,7 +77,7 @@ Group:      Development/Libraries
 Requires:   %{name} = %{version}-%{release}
 
 %description devel
-Description: %{summary}
+%{summary}.
 
 %package doc
 Summary:   Documentation for %{name}
@@ -113,8 +113,7 @@ export CXXFLAGS="$CXXFLAGS -mfpu=neon"
            --disable-esound \
            --with-database=simple
 
-make %{?jobs:-j%jobs}
-
+make %{?_smp_mflags}
 
 %install
 rm -rf %{buildroot}
