@@ -2,7 +2,7 @@
 
 [Unit]
 Description=PulseAudio (system-wide mode)
-DefaultDependencies=no
+After=dbus.socket
 Requires=dbus.socket
 RefuseManualStart=yes
 Before=multi-user.target systemd-user-sessions.service
