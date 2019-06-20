@@ -149,15 +149,16 @@ install -m0644 README %{buildroot}%{_docdir}/%{name}-%{version}
 %fdupes  %{buildroot}/%{_includedir}
 
 %pre
-# system-wide mode needs an user and two groups
-if ! getent passwd pulse > /dev/null ; then
-    useradd -rUG audio,bluetooth -d /run/pulse -s /sbin/nologin pulse || :
+getent group pulse-access >/dev/null || groupadd -r pulse-access
+getent group pulse >/dev/null || groupadd -f -g 171 -r pulse
+if ! getent passwd pulse >/dev/null ; then
+    if ! getent passwd 171 >/dev/null ; then
+        useradd -r -u 171 -g pulse -G audio -d %{_localstatedir}/run/pulse -s /sbin/nologin -c "PulseAudio System Daemon" pulse
+    else
+        useradd -r -g pulse -G audio -d %{_localstatedir}/run/pulse -s /sbin/nologin -c "PulseAudio System Daemon" pulse
+    fi
 fi
-if ! getent group pulse-access > /dev/null ; then
-    groupadd -rf pulse-access || :
-    usermod -G pulse-access -a root || :
-    usermod -G pulse-access -a nemo || :
-fi
+usermod -G pulse-access -a root || :
 
 %post -p /sbin/ldconfig
 
