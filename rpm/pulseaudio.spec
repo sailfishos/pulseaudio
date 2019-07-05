@@ -19,6 +19,7 @@ Source4:    50-sfos.client.conf
 Source5:    pulseaudio-system.service
 Requires:   udev
 Requires:   libsbc >= 1.0
+Requires:   filesystem >= 3.2
 Requires(post): /sbin/ldconfig
 Requires(postun): /sbin/ldconfig
 # system-wide mode %pre
@@ -117,7 +118,8 @@ export CXXFLAGS="$CXXFLAGS -mfpu=neon"
            --disable-openssl \
            --disable-gconf \
            --disable-esound \
-           --with-database=simple
+           --with-database=simple \
+           --with-udev-rules-dir=%{_prefix}/lib/udev/rules.d
 
 make %{?_smp_mflags}
 
@@ -182,7 +184,7 @@ usermod -G pulse-access -a root || :
 %dir %{_sysconfdir}/pulse
 %{_libdir}/systemd/user/pulseaudio.service
 %{_libdir}/systemd/user/user-session.target.wants/pulseaudio.service
-/lib/udev/rules.d/90-pulseaudio.rules
+%{_prefix}/lib/udev/rules.d/90-pulseaudio.rules
 %{_bindir}/pacat
 %{_bindir}/pacmd
 %{_bindir}/pactl
