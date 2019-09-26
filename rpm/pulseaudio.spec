@@ -169,9 +169,9 @@ usermod -G pulse-access -a root || :
 %license GPL LGPL LICENSE
 %if ! %{with X11}
 %endif
-%config(noreplace) %{_sysconfdir}/pulse/*.conf
-%config(noreplace) %{_sysconfdir}/pulse/*.pa
-%config(noreplace) %{_sysconfdir}/security/limits.d/90-pulse.conf
+%config %{_sysconfdir}/pulse/*.conf
+%config %{_sysconfdir}/pulse/*.pa
+%config %{_sysconfdir}/security/limits.d/90-pulse.conf
 %dir %{_sysconfdir}/pulse/daemon.conf.d
 %config %{_sysconfdir}/pulse/daemon.conf.d/50-sfos.daemon.conf
 %dir %{_sysconfdir}/pulse/client.conf.d
