@@ -1,6 +1,3 @@
-# Conditional building of X11 related things
-%bcond_with X11
-
 Name:       pulseaudio
 
 %define pulseversion 12.2
@@ -36,13 +33,6 @@ BuildRequires:  pkgconfig(sndfile) >= 1.0.20
 BuildRequires:  pkgconfig(speexdsp) >= 1.2
 BuildRequires:  pkgconfig(atomic_ops)
 BuildRequires:  pkgconfig(sbc) >= 1.0
-%if %{with X11}
-BuildRequires:  pkgconfig(ice)
-BuildRequires:  pkgconfig(sm)
-BuildRequires:  pkgconfig(x11-xcb)
-BuildRequires:  pkgconfig(xcb) >= 1.6
-BuildRequires:  pkgconfig(xtst)
-%endif
 BuildRequires:  intltool
 BuildRequires:  libcap-devel
 BuildRequires:  libtool >= 2.4
@@ -66,15 +56,6 @@ PulseAudio is responsible for:
    they are ALSA-supported sound cards, Bluetooth headsets, remote sound
    cards in the local network or anything else
  * and more...
-
-%package module-x11
-Summary:    PulseAudio components needed for starting x11 User session
-Group:      Multimedia/PulseAudio
-Requires:   %{name} = %{version}-%{release}
-Requires:   /bin/sed
-
-%description module-x11
-%{summary}.
 
 %package devel
 Summary:    PulseAudio Development headers and libraries
@@ -105,11 +86,7 @@ export CXXFLAGS="$CXXFLAGS -mfpu=neon"
 %endif
 
 %configure --disable-static \
-%if %{with X11}
-           --enable-x11 \
-%else
            --disable-x11 \
-%endif
 %ifarch %{arm}
            --enable-neon-opt \
 %endif
@@ -147,6 +124,9 @@ install -m0644 README %{buildroot}%{_docdir}/%{name}-%{version}
 %fdupes  %{buildroot}/%{_datadir}
 %fdupes  %{buildroot}/%{_includedir}
 
+# Stray X11 manpage
+rm %{buildroot}%{_mandir}/man1/start-pulseaudio-x11.1
+
 %pre
 getent group pulse-access >/dev/null || groupadd -r pulse-access
 getent group pulse >/dev/null || groupadd -f -g 171 -r pulse
@@ -166,8 +146,6 @@ usermod -G pulse-access -a root || :
 %files -f pulseaudio.lang
 %defattr(-,root,root,-)
 %license GPL LGPL LICENSE
-%if ! %{with X11}
-%endif
 %config %{_sysconfdir}/pulse/*.conf
 %config %{_sysconfdir}/pulse/*.pa
 %config %{_sysconfdir}/security/limits.d/90-pulse.conf
@@ -294,18 +272,6 @@ usermod -G pulse-access -a root || :
 %{_unitdir}/pulseaudio.service
 %config %{_sysconfdir}/dbus-1/system.d/pulseaudio-system.conf
 
-%if %{with X11}
-%files module-x11
-%defattr(-,root,root,-)
-%config %{_sysconfdir}/xdg/autostart/pulseaudio.desktop
-%{_bindir}/pax11publish
-%{_bindir}/start-pulseaudio-x11
-%{_libdir}/pulse-%{pulseversion}/modules/module-x11-bell.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-x11-cork-request.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-x11-publish.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-x11-xsmp.so
-%endif
-
 %files devel
 %defattr(-,root,root,-)
 %dir %{_includedir}/pulse
@@ -328,6 +294,5 @@ usermod -G pulse-access -a root || :
 %files doc
 %defattr(-,root,root,-)
 %{_mandir}/man1/p*
-%{_mandir}/man1/start-pulseaudio-x11.1.gz
 %{_mandir}/man5/*.*
 %{_docdir}/%{name}-%{version}
