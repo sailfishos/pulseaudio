@@ -5,7 +5,6 @@ Name:       pulseaudio
 Summary:    General purpose sound server
 Version:    %{pulseversion}
 Release:    1
-Group:      Multimedia/PulseAudio
 License:    LGPLv2+
 URL:        http://pulseaudio.org
 Source0:    http://freedesktop.org/software/pulseaudio/releases/pulseaudio-%{version}.tar.xz
@@ -59,7 +58,6 @@ PulseAudio is responsible for:
 
 %package devel
 Summary:    PulseAudio Development headers and libraries
-Group:      Development/Libraries
 Requires:   %{name} = %{version}-%{release}
 
 %description devel
@@ -67,7 +65,6 @@ Requires:   %{name} = %{version}-%{release}
 
 %package doc
 Summary:   Documentation for %{name}
-Group:     Documentation
 Requires:  %{name} = %{version}-%{release}
 
 %description doc
