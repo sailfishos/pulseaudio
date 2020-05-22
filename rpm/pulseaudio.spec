@@ -84,7 +84,7 @@ export CXXFLAGS="$CXXFLAGS -mfpu=neon"
 
 %configure --disable-static \
            --disable-x11 \
-%ifarch %{arm}
+%ifarch %{arm} || %{aarch64}
            --enable-neon-opt \
 %endif
            --disable-openssl \
