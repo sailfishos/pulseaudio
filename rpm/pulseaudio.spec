@@ -48,7 +48,6 @@ BuildRequires:  libcap-devel
 BuildRequires:  libtool >= 2.4
 BuildRequires:  libtool-ltdl-devel
 BuildRequires:  fdupes
-BuildRequires:  systemd-libs
 BuildRequires:  systemd-devel
 BuildRequires:  pkgconfig(bluez) >= 4.101
 
@@ -127,18 +126,18 @@ rm -rf %{buildroot}
 
 install -d %{buildroot}/etc/security/limits.d
 cp -a %{SOURCE1} %{buildroot}/etc/security/limits.d
-install -d %{buildroot}/usr/lib/systemd/user
-cp -a %{SOURCE2} %{buildroot}/usr/lib/systemd/user
-mkdir -p %{buildroot}/usr/lib/systemd/user/user-session.target.wants
-ln -s ../pulseaudio.service %{buildroot}/usr/lib/systemd/user/user-session.target.wants/
+install -d %{buildroot}%{_userunitdir}
+cp -a %{SOURCE2} %{buildroot}%{_userunitdir}
+mkdir -p %{buildroot}%{_userunitdir}/user-session.target.wants
+ln -s ../pulseaudio.service %{buildroot}%{_userunitdir}/user-session.target.wants/
 install -d %{buildroot}/%{_sysconfdir}/pulse/daemon.conf.d
 install -m 644 %{SOURCE3} %{buildroot}/%{_sysconfdir}/pulse/daemon.conf.d
 install -d %{buildroot}/%{_sysconfdir}/pulse/client.conf.d
 install -m 644 %{SOURCE4} %{buildroot}/%{_sysconfdir}/pulse/client.conf.d
 
 # system-wide mode configuration
-install -d %{buildroot}/usr/lib/systemd/system
-install -m 644 %{SOURCE5} %{buildroot}/usr/lib/systemd/system/pulseaudio.service
+install -d %{buildroot}/%{_unitdir}
+install -m 644 %{SOURCE5} %{buildroot}/%{_unitdir}/pulseaudio.service
 
 mkdir -p %{buildroot}%{_docdir}/%{name}-%{version}
 install -m0644 README %{buildroot}%{_docdir}/%{name}-%{version}
@@ -178,11 +177,11 @@ usermod -G pulse-access -a root || :
 %config %{_sysconfdir}/pulse/client.conf.d/50-sfos.client.conf
 %{_datadir}/bash-completion/completions/*
 %{_datadir}/zsh/site-functions/_pulseaudio
-%{_libdir}/systemd/user/pulseaudio.socket
+%{_userunitdir}/pulseaudio.socket
 %dir %{_sysconfdir}/pulse
-%{_libdir}/systemd/user/pulseaudio.service
-%{_libdir}/systemd/user/user-session.target.wants/pulseaudio.service
-/lib/udev/rules.d/90-pulseaudio.rules
+%{_userunitdir}/pulseaudio.service
+%{_userunitdir}/user-session.target.wants/pulseaudio.service
+%{_udevrulesdir}/90-pulseaudio.rules
 %{_bindir}/pacat
 %{_bindir}/pacmd
 %{_bindir}/pactl
@@ -292,7 +291,7 @@ usermod -G pulse-access -a root || :
 %{_datadir}/GConf/gsettings/pulseaudio.convert
 %{_datadir}/glib-2.0/schemas/org.freedesktop.pulseaudio.gschema.xml
 # system-wide mode
-%{_libdir}/systemd/system/pulseaudio.service
+%{_unitdir}/pulseaudio.service
 %config %{_sysconfdir}/dbus-1/system.d/pulseaudio-system.conf
 
 %if %{with X11}
