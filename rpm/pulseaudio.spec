@@ -1,6 +1,3 @@
-# Conditional building of X11 related things
-%bcond_with X11
-
 Name:       pulseaudio
 
 %define pulseversion 12.2
@@ -8,7 +5,6 @@ Name:       pulseaudio
 Summary:    General purpose sound server
 Version:    %{pulseversion}
 Release:    1
-Group:      Multimedia/PulseAudio
 License:    LGPLv2+
 URL:        http://pulseaudio.org
 Source0:    http://freedesktop.org/software/pulseaudio/releases/pulseaudio-%{version}.tar.xz
@@ -36,19 +32,11 @@ BuildRequires:  pkgconfig(sndfile) >= 1.0.20
 BuildRequires:  pkgconfig(speexdsp) >= 1.2
 BuildRequires:  pkgconfig(atomic_ops)
 BuildRequires:  pkgconfig(sbc) >= 1.0
-%if %{with X11}
-BuildRequires:  pkgconfig(ice)
-BuildRequires:  pkgconfig(sm)
-BuildRequires:  pkgconfig(x11-xcb)
-BuildRequires:  pkgconfig(xcb) >= 1.6
-BuildRequires:  pkgconfig(xtst)
-%endif
 BuildRequires:  intltool
 BuildRequires:  libcap-devel
 BuildRequires:  libtool >= 2.4
 BuildRequires:  libtool-ltdl-devel
 BuildRequires:  fdupes
-BuildRequires:  systemd-libs
 BuildRequires:  systemd-devel
 BuildRequires:  pkgconfig(bluez) >= 4.101
 
@@ -68,18 +56,8 @@ PulseAudio is responsible for:
    cards in the local network or anything else
  * and more...
 
-%package module-x11
-Summary:    PulseAudio components needed for starting x11 User session
-Group:      Multimedia/PulseAudio
-Requires:   %{name} = %{version}-%{release}
-Requires:   /bin/sed
-
-%description module-x11
-%{summary}.
-
 %package devel
 Summary:    PulseAudio Development headers and libraries
-Group:      Development/Libraries
 Requires:   %{name} = %{version}-%{release}
 
 %description devel
@@ -87,7 +65,6 @@ Requires:   %{name} = %{version}-%{release}
 
 %package doc
 Summary:   Documentation for %{name}
-Group:     Documentation
 Requires:  %{name} = %{version}-%{release}
 
 %description doc
@@ -106,12 +83,8 @@ export CXXFLAGS="$CXXFLAGS -mfpu=neon"
 %endif
 
 %configure --disable-static \
-%if %{with X11}
-           --enable-x11 \
-%else
            --disable-x11 \
-%endif
-%ifarch %{arm}
+%ifarch %{arm} || %{aarch64}
            --enable-neon-opt \
 %endif
            --disable-openssl \
@@ -127,18 +100,18 @@ rm -rf %{buildroot}
 
 install -d %{buildroot}/etc/security/limits.d
 cp -a %{SOURCE1} %{buildroot}/etc/security/limits.d
-install -d %{buildroot}/usr/lib/systemd/user
-cp -a %{SOURCE2} %{buildroot}/usr/lib/systemd/user
-mkdir -p %{buildroot}/usr/lib/systemd/user/user-session.target.wants
-ln -s ../pulseaudio.service %{buildroot}/usr/lib/systemd/user/user-session.target.wants/
+install -d %{buildroot}%{_userunitdir}
+cp -a %{SOURCE2} %{buildroot}%{_userunitdir}
+mkdir -p %{buildroot}%{_userunitdir}/user-session.target.wants
+ln -s ../pulseaudio.service %{buildroot}%{_userunitdir}/user-session.target.wants/
 install -d %{buildroot}/%{_sysconfdir}/pulse/daemon.conf.d
 install -m 644 %{SOURCE3} %{buildroot}/%{_sysconfdir}/pulse/daemon.conf.d
 install -d %{buildroot}/%{_sysconfdir}/pulse/client.conf.d
 install -m 644 %{SOURCE4} %{buildroot}/%{_sysconfdir}/pulse/client.conf.d
 
 # system-wide mode configuration
-install -d %{buildroot}/usr/lib/systemd/system
-install -m 644 %{SOURCE5} %{buildroot}/usr/lib/systemd/system/pulseaudio.service
+install -d %{buildroot}/%{_unitdir}
+install -m 644 %{SOURCE5} %{buildroot}/%{_unitdir}/pulseaudio.service
 
 mkdir -p %{buildroot}%{_docdir}/%{name}-%{version}
 install -m0644 README %{buildroot}%{_docdir}/%{name}-%{version}
@@ -147,6 +120,9 @@ install -m0644 README %{buildroot}%{_docdir}/%{name}-%{version}
 
 %fdupes  %{buildroot}/%{_datadir}
 %fdupes  %{buildroot}/%{_includedir}
+
+# Stray X11 manpage
+rm %{buildroot}%{_mandir}/man1/start-pulseaudio-x11.1
 
 %pre
 getent group pulse-access >/dev/null || groupadd -r pulse-access
@@ -167,8 +143,6 @@ usermod -G pulse-access -a root || :
 %files -f pulseaudio.lang
 %defattr(-,root,root,-)
 %license GPL LGPL LICENSE
-%if ! %{with X11}
-%endif
 %config %{_sysconfdir}/pulse/*.conf
 %config %{_sysconfdir}/pulse/*.pa
 %config %{_sysconfdir}/security/limits.d/90-pulse.conf
@@ -178,11 +152,11 @@ usermod -G pulse-access -a root || :
 %config %{_sysconfdir}/pulse/client.conf.d/50-sfos.client.conf
 %{_datadir}/bash-completion/completions/*
 %{_datadir}/zsh/site-functions/_pulseaudio
-%{_libdir}/systemd/user/pulseaudio.socket
+%{_userunitdir}/pulseaudio.socket
 %dir %{_sysconfdir}/pulse
-%{_libdir}/systemd/user/pulseaudio.service
-%{_libdir}/systemd/user/user-session.target.wants/pulseaudio.service
-/lib/udev/rules.d/90-pulseaudio.rules
+%{_userunitdir}/pulseaudio.service
+%{_userunitdir}/user-session.target.wants/pulseaudio.service
+%{_udevrulesdir}/90-pulseaudio.rules
 %{_bindir}/pacat
 %{_bindir}/pacmd
 %{_bindir}/pactl
@@ -292,20 +266,8 @@ usermod -G pulse-access -a root || :
 %{_datadir}/GConf/gsettings/pulseaudio.convert
 %{_datadir}/glib-2.0/schemas/org.freedesktop.pulseaudio.gschema.xml
 # system-wide mode
-%{_libdir}/systemd/system/pulseaudio.service
+%{_unitdir}/pulseaudio.service
 %config %{_sysconfdir}/dbus-1/system.d/pulseaudio-system.conf
-
-%if %{with X11}
-%files module-x11
-%defattr(-,root,root,-)
-%config %{_sysconfdir}/xdg/autostart/pulseaudio.desktop
-%{_bindir}/pax11publish
-%{_bindir}/start-pulseaudio-x11
-%{_libdir}/pulse-%{pulseversion}/modules/module-x11-bell.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-x11-cork-request.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-x11-publish.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-x11-xsmp.so
-%endif
 
 %files devel
 %defattr(-,root,root,-)
@@ -329,6 +291,5 @@ usermod -G pulse-access -a root || :
 %files doc
 %defattr(-,root,root,-)
 %{_mandir}/man1/p*
-%{_mandir}/man1/start-pulseaudio-x11.1.gz
 %{_mandir}/man5/*.*
 %{_docdir}/%{name}-%{version}
