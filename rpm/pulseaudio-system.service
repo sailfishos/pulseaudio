@@ -18,3 +18,4 @@ ExecStopPost=/bin/sh -c "rm -f /run/pulse/pid"
 Restart=always
 RestartSec=1
 Type=notify
+TimeoutStartSec=120
