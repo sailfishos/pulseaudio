@@ -38,7 +38,7 @@ int pa__init(pa_module*m) {
 
     pa_assert(m);
 
-    pa_log("module-rescue-stream is obsolete and should no longer be loaded. Please remove it from your configuration.");
+    pa_log_info("module-rescue-stream is obsolete and should no longer be loaded. Please remove it from your configuration.");
 
     pa_module_unload_request(m, false);
 
