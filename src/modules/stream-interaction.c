@@ -81,7 +81,6 @@ static bool update_group_active(struct userdata *u, struct group *g) {
     void *value;
 
     pa_assert(u);
-    pa_assert(g);
 
     if (pa_hashmap_size(g->trigger_state) > 0) {
         PA_HASHMAP_FOREACH_KV(sink_input, value, g->trigger_state, state) {
@@ -231,6 +230,7 @@ static void update_interactions(struct userdata *u, struct group *g,
     uint32_t idx;
 
     pa_assert(u);
+
     pa_assert(g);
     pa_assert(sink_input);
     pa_assert(sink_input->sink);
@@ -451,7 +451,7 @@ static int count_groups(pa_modargs *ma, const char *module_argument) {
     val = pa_modargs_get_value(ma, module_argument, NULL);
     if (val) {
         const char *split_state = NULL;
-        int len = 0;
+        size_t len = 0;
         /* Count empty ones as well, empty groups will fail later
          * when parsing the groups. */
         while (pa_split_in_place(val, "/", &len, &split_state))
@@ -573,6 +573,7 @@ fail:
         pa_modargs_free(ma);
 
     return -1;
+
 }
 
 void pa_stream_interaction_done(pa_module *m) {
@@ -591,4 +592,5 @@ void pa_stream_interaction_done(pa_module *m) {
     }
 
     pa_xfree(u);
+
 }

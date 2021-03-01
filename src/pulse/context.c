@@ -125,7 +125,7 @@ static void reset_callbacks(pa_context *c) {
     c->ext_stream_restore.userdata = NULL;
 }
 
-pa_context *pa_context_new_with_proplist(pa_mainloop_api *mainloop, const char *name, pa_proplist *p) {
+pa_context *pa_context_new_with_proplist(pa_mainloop_api *mainloop, const char *name, const pa_proplist *p) {
     pa_context *c;
     pa_mem_type_t type;
 
@@ -138,6 +138,9 @@ pa_context *pa_context_new_with_proplist(pa_mainloop_api *mainloop, const char *
 
     c = pa_xnew0(pa_context, 1);
     PA_REFCNT_INIT(c);
+
+    c->error = pa_xnew0(pa_context_error, 1);
+    assert(c->error);
 
     c->proplist = p ? pa_proplist_copy(p) : pa_proplist_new();
 
@@ -156,7 +159,7 @@ pa_context *pa_context_new_with_proplist(pa_mainloop_api *mainloop, const char *
     PA_LLIST_HEAD_INIT(pa_stream, c->streams);
     PA_LLIST_HEAD_INIT(pa_operation, c->operations);
 
-    c->error = PA_OK;
+    c->error->error = PA_OK;
     c->state = PA_CONTEXT_UNCONNECTED;
 
     reset_callbacks(c);
@@ -271,6 +274,7 @@ static void context_free(pa_context *c) {
         pa_proplist_free(c->proplist);
 
     pa_xfree(c->server);
+    pa_xfree(c->error);
     pa_xfree(c);
 }
 
@@ -310,12 +314,12 @@ void pa_context_set_state(pa_context *c, pa_context_state_t st) {
     pa_context_unref(c);
 }
 
-int pa_context_set_error(pa_context *c, int error) {
+int pa_context_set_error(const pa_context *c, int error) {
     pa_assert(error >= 0);
     pa_assert(error < PA_ERR_MAX);
 
     if (c)
-        c->error = error;
+        c->error->error = error;
 
     return error;
 }
@@ -1058,21 +1062,21 @@ void pa_context_disconnect(pa_context *c) {
         pa_context_set_state(c, PA_CONTEXT_TERMINATED);
 }
 
-pa_context_state_t pa_context_get_state(pa_context *c) {
+pa_context_state_t pa_context_get_state(const pa_context *c) {
     pa_assert(c);
     pa_assert(PA_REFCNT_VALUE(c) >= 1);
 
     return c->state;
 }
 
-int pa_context_errno(pa_context *c) {
+int pa_context_errno(const pa_context *c) {
 
     if (!c)
         return PA_ERR_INVALID;
 
     pa_assert(PA_REFCNT_VALUE(c) >= 1);
 
-    return c->error;
+    return c->error->error;
 }
 
 void pa_context_set_state_callback(pa_context *c, pa_context_notify_cb_t cb, void *userdata) {
@@ -1103,7 +1107,7 @@ void pa_context_set_event_callback(pa_context *c, pa_context_event_cb_t cb, void
     c->event_userdata = userdata;
 }
 
-int pa_context_is_pending(pa_context *c) {
+int pa_context_is_pending(const pa_context *c) {
     pa_assert(c);
     pa_assert(PA_REFCNT_VALUE(c) >= 1);
 
@@ -1272,7 +1276,7 @@ pa_operation* pa_context_set_default_source(pa_context *c, const char *name, pa_
     return o;
 }
 
-int pa_context_is_local(pa_context *c) {
+int pa_context_is_local(const pa_context *c) {
     pa_assert(c);
     pa_assert(PA_REFCNT_VALUE(c) >= 1);
 
@@ -1316,7 +1320,7 @@ const char* pa_get_library_version(void) {
     return pa_get_headers_version();
 }
 
-const char* pa_context_get_server(pa_context *c) {
+const char* pa_context_get_server(const pa_context *c) {
     pa_assert(c);
     pa_assert(PA_REFCNT_VALUE(c) >= 1);
 
@@ -1331,11 +1335,11 @@ const char* pa_context_get_server(pa_context *c) {
     return c->server;
 }
 
-uint32_t pa_context_get_protocol_version(pa_context *c) {
+uint32_t pa_context_get_protocol_version(const pa_context *c) {
     return PA_PROTOCOL_VERSION;
 }
 
-uint32_t pa_context_get_server_protocol_version(pa_context *c) {
+uint32_t pa_context_get_server_protocol_version(const pa_context *c) {
     pa_assert(c);
     pa_assert(PA_REFCNT_VALUE(c) >= 1);
 
@@ -1358,7 +1362,7 @@ pa_tagstruct *pa_tagstruct_command(pa_context *c, uint32_t command, uint32_t *ta
     return t;
 }
 
-uint32_t pa_context_get_index(pa_context *c) {
+uint32_t pa_context_get_index(const pa_context *c) {
     pa_assert(c);
     pa_assert(PA_REFCNT_VALUE(c) >= 1);
 
@@ -1369,7 +1373,7 @@ uint32_t pa_context_get_index(pa_context *c) {
     return c->client_index;
 }
 
-pa_operation *pa_context_proplist_update(pa_context *c, pa_update_mode_t mode, pa_proplist *p, pa_context_success_cb_t cb, void *userdata) {
+pa_operation *pa_context_proplist_update(pa_context *c, pa_update_mode_t mode, const pa_proplist *p, pa_context_success_cb_t cb, void *userdata) {
     pa_operation *o;
     pa_tagstruct *t;
     uint32_t tag;
@@ -1588,7 +1592,7 @@ finish:
         pa_proplist_free(pl);
 }
 
-pa_time_event* pa_context_rttime_new(pa_context *c, pa_usec_t usec, pa_time_event_cb_t cb, void *userdata) {
+pa_time_event* pa_context_rttime_new(const pa_context *c, pa_usec_t usec, pa_time_event_cb_t cb, void *userdata) {
     struct timeval tv;
 
     pa_assert(c);
@@ -1603,7 +1607,7 @@ pa_time_event* pa_context_rttime_new(pa_context *c, pa_usec_t usec, pa_time_even
     return c->mainloop->time_new(c->mainloop, &tv, cb, userdata);
 }
 
-void pa_context_rttime_restart(pa_context *c, pa_time_event *e, pa_usec_t usec) {
+void pa_context_rttime_restart(const pa_context *c, pa_time_event *e, pa_usec_t usec) {
     struct timeval tv;
 
     pa_assert(c);
@@ -1618,7 +1622,7 @@ void pa_context_rttime_restart(pa_context *c, pa_time_event *e, pa_usec_t usec) 
     }
 }
 
-size_t pa_context_get_tile_size(pa_context *c, const pa_sample_spec *ss) {
+size_t pa_context_get_tile_size(const pa_context *c, const pa_sample_spec *ss) {
     size_t fs, mbs;
 
     pa_assert(c);

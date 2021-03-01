@@ -115,7 +115,7 @@ static int source_set_state_in_main_thread_cb(pa_source *s, pa_source_state_t st
     pa_assert_se(u = s->userdata);
 
     if (!PA_SOURCE_IS_LINKED(state) ||
-        !PA_SOURCE_OUTPUT_IS_LINKED(pa_source_output_get_state(u->source_output)))
+        !PA_SOURCE_OUTPUT_IS_LINKED(u->source_output->state))
         return 0;
 
     pa_source_output_cork(u->source_output, state == PA_SOURCE_SUSPENDED);
@@ -152,7 +152,7 @@ static void source_output_push_cb(pa_source_output *o, const pa_memchunk *chunk)
     if (!PA_SOURCE_IS_LINKED(u->source->thread_info.state))
         return;
 
-    if (!PA_SOURCE_OUTPUT_IS_LINKED(pa_source_output_get_state(u->source_output))) {
+    if (!PA_SOURCE_OUTPUT_IS_LINKED(u->source_output->thread_info.state)) {
         pa_log("push when no link?");
         return;
     }
@@ -252,6 +252,8 @@ static void source_output_state_change_cb(pa_source_output *o, pa_source_output_
 /* Called from main thread */
 static void source_output_moving_cb(pa_source_output *o, pa_source *dest) {
     struct userdata *u;
+    uint32_t idx;
+    pa_source_output *output;
 
     pa_source_output_assert_ref(o);
     pa_assert_ctl_context();
@@ -262,6 +264,12 @@ static void source_output_moving_cb(pa_source_output *o, pa_source *dest) {
         pa_source_update_flags(u->source, PA_SOURCE_LATENCY|PA_SOURCE_DYNAMIC_LATENCY, dest->flags);
     } else
         pa_source_set_asyncmsgq(u->source, NULL);
+
+    /* Propagate asyncmsq change to attached virtual sources */
+    PA_IDXSET_FOREACH(output, u->source->outputs, idx) {
+        if (output->destination_source && output->moving)
+            output->moving(output, u->source);
+    }
 
     if (u->auto_desc && dest) {
         const char *k;

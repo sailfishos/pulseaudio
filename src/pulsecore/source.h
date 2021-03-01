@@ -84,6 +84,7 @@ struct pa_source {
     pa_channel_map channel_map;
     uint32_t default_sample_rate;
     uint32_t alternate_sample_rate;
+    bool avoid_resampling:1;
 
     pa_idxset *outputs;
     unsigned n_corked;
@@ -224,7 +225,7 @@ struct pa_source {
 
     /* Called whenever device parameters need to be changed. Called from
      * main thread. */
-    int (*reconfigure)(pa_source *s, pa_sample_spec *spec, bool passthrough);
+    void (*reconfigure)(pa_source *s, pa_sample_spec *spec, bool passthrough);
 
     /* Contains copies of the above data so that the real-time worker
      * thread can work without access locking */
@@ -314,6 +315,7 @@ typedef struct pa_source_new_data {
     pa_sample_spec sample_spec;
     pa_channel_map channel_map;
     uint32_t alternate_sample_rate;
+    bool avoid_resampling:1;
     pa_cvolume volume;
     bool muted:1;
 
@@ -322,6 +324,7 @@ typedef struct pa_source_new_data {
     bool sample_spec_is_set:1;
     bool channel_map_is_set:1;
     bool alternate_sample_rate_is_set:1;
+    bool avoid_resampling_is_set:1;
 
     bool namereg_fail:1;
 
@@ -335,6 +338,7 @@ void pa_source_new_data_set_name(pa_source_new_data *data, const char *name);
 void pa_source_new_data_set_sample_spec(pa_source_new_data *data, const pa_sample_spec *spec);
 void pa_source_new_data_set_channel_map(pa_source_new_data *data, const pa_channel_map *map);
 void pa_source_new_data_set_alternate_sample_rate(pa_source_new_data *data, const uint32_t alternate_sample_rate);
+void pa_source_new_data_set_avoid_resampling(pa_source_new_data *data, bool avoid_resampling);
 void pa_source_new_data_set_volume(pa_source_new_data *data, const pa_cvolume *volume);
 void pa_source_new_data_set_muted(pa_source_new_data *data, bool mute);
 void pa_source_new_data_set_port(pa_source_new_data *data, const char *port);
@@ -414,7 +418,7 @@ bool pa_source_update_proplist(pa_source *s, pa_update_mode_t mode, pa_proplist 
 
 int pa_source_set_port(pa_source *s, const char *name, bool save);
 
-int pa_source_reconfigure(pa_source *s, pa_sample_spec *spec, bool passthrough);
+void pa_source_reconfigure(pa_source *s, pa_sample_spec *spec, bool passthrough);
 
 unsigned pa_source_linked_by(pa_source *s); /* Number of connected streams */
 unsigned pa_source_used_by(pa_source *s); /* Number of connected streams that are not corked */
@@ -422,8 +426,6 @@ unsigned pa_source_used_by(pa_source *s); /* Number of connected streams that ar
 /* Returns how many streams are active that don't allow suspensions. If
  * "ignore" is non-NULL, that stream is not included in the count. */
 unsigned pa_source_check_suspend(pa_source *s, pa_source_output *ignore);
-
-#define pa_source_get_state(s) ((pa_source_state_t) (s)->state)
 
 const char *pa_source_state_to_string(pa_source_state_t state);
 
@@ -441,6 +443,9 @@ pa_idxset* pa_source_get_formats(pa_source *s);
 
 bool pa_source_check_format(pa_source *s, pa_format_info *f);
 pa_idxset* pa_source_check_formats(pa_source *s, pa_idxset *in_formats);
+
+void pa_source_set_sample_format(pa_source *s, pa_sample_format_t format);
+void pa_source_set_sample_rate(pa_source *s, uint32_t rate);
 
 /*** To be called exclusively by the source driver, from IO context */
 
@@ -475,6 +480,12 @@ int64_t pa_source_get_latency_within_thread(pa_source *s, bool allow_negative);
  * all the extra stuff that pa_source_set_volume() does. This function simply
  * sets s->reference_volume and fires change notifications. */
 void pa_source_set_reference_volume_direct(pa_source *s, const pa_cvolume *volume);
+
+/* When the default_source is changed or the active_port of a source is changed to
+ * PA_AVAILABLE_NO, this function is called to move the streams of the old
+ * default_source or the source with active_port equals PA_AVAILABLE_NO to the
+ * current default_source conditionally*/
+void pa_source_move_streams_to_default_source(pa_core *core, pa_source *old_source, bool default_source_changed);
 
 #define pa_source_assert_io_context(s) \
     pa_assert(pa_thread_mq_get() || !PA_SOURCE_IS_LINKED((s)->state))

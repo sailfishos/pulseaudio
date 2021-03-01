@@ -1282,7 +1282,12 @@ static int pa_cli_command_play_file(pa_core *c, pa_tokenizer *t, pa_strbuf *buf,
         return -1;
     }
 
-    return pa_play_file(sink, fname, NULL);
+    if (pa_play_file(sink, fname, NULL) < 0) {
+        pa_strbuf_puts(buf, "Failed to play sound file.\n");
+        return -1;
+    }
+
+    return 0;
 }
 
 static int pa_cli_command_list_shared_props(pa_core *c, pa_tokenizer *t, pa_strbuf *buf, bool *fail) {
@@ -1824,7 +1829,7 @@ static int pa_cli_command_dump(pa_core *c, pa_tokenizer *t, pa_strbuf *buf, bool
 
         pa_strbuf_printf(buf, "set-sink-volume %s 0x%03x\n", sink->name, pa_cvolume_max(pa_sink_get_volume(sink, false)));
         pa_strbuf_printf(buf, "set-sink-mute %s %s\n", sink->name, pa_yes_no(pa_sink_get_mute(sink, false)));
-        pa_strbuf_printf(buf, "suspend-sink %s %s\n", sink->name, pa_yes_no(pa_sink_get_state(sink) == PA_SINK_SUSPENDED));
+        pa_strbuf_printf(buf, "suspend-sink %s %s\n", sink->name, pa_yes_no(sink->state == PA_SINK_SUSPENDED));
     }
 
     nl = false;
@@ -1837,7 +1842,7 @@ static int pa_cli_command_dump(pa_core *c, pa_tokenizer *t, pa_strbuf *buf, bool
 
         pa_strbuf_printf(buf, "set-source-volume %s 0x%03x\n", source->name, pa_cvolume_max(pa_source_get_volume(source, false)));
         pa_strbuf_printf(buf, "set-source-mute %s %s\n", source->name, pa_yes_no(pa_source_get_mute(source, false)));
-        pa_strbuf_printf(buf, "suspend-source %s %s\n", source->name, pa_yes_no(pa_source_get_state(source) == PA_SOURCE_SUSPENDED));
+        pa_strbuf_printf(buf, "suspend-source %s %s\n", source->name, pa_yes_no(source->state == PA_SOURCE_SUSPENDED));
     }
 
     nl = false;
@@ -2069,34 +2074,34 @@ int pa_cli_command_execute_line_stateful(pa_core *c, const char *s, pa_strbuf *b
                             }
 
                             closedir(d);
+                            if ((count = pa_dynarray_size(files))) {
+                                sorted_files = pa_xnew(char*, count);
+                                for (i = 0; i < count; ++i)
+                                    sorted_files[i] = pa_dynarray_get(files, i);
+                                pa_dynarray_free(files);
 
-                            count = pa_dynarray_size(files);
-                            sorted_files = pa_xnew(char*, count);
-                            for (i = 0; i < count; ++i)
-                                sorted_files[i] = pa_dynarray_get(files, i);
-                            pa_dynarray_free(files);
-
-                            for (i = 0; i < count; ++i) {
-                                for (unsigned j = 0; j < count; ++j) {
-                                    if (strcmp(sorted_files[i], sorted_files[j]) < 0) {
-                                        char *tmp = sorted_files[i];
-                                        sorted_files[i] = sorted_files[j];
-                                        sorted_files[j] = tmp;
+                                for (i = 0; i < count; ++i) {
+                                    for (unsigned j = 0; j < count; ++j) {
+                                        if (strcmp(sorted_files[i], sorted_files[j]) < 0) {
+                                            char *tmp = sorted_files[i];
+                                            sorted_files[i] = sorted_files[j];
+                                            sorted_files[j] = tmp;
+                                        }
                                     }
                                 }
-                            }
 
-                            for (i = 0; i < count; ++i) {
-                                if (!failed) {
-                                    if (pa_cli_command_execute_file(c, sorted_files[i], buf, fail) < 0 && *fail)
-                                        failed = true;
+                                for (i = 0; i < count; ++i) {
+                                    if (!failed) {
+                                        if (pa_cli_command_execute_file(c, sorted_files[i], buf, fail) < 0 && *fail)
+                                            failed = true;
+                                    }
+
+                                    pa_xfree(sorted_files[i]);
                                 }
-
-                                pa_xfree(sorted_files[i]);
+                                pa_xfree(sorted_files);
+                                if (failed)
+                                    return -1;
                             }
-                            pa_xfree(sorted_files);
-                            if (failed)
-                                return -1;
                         }
                     } else if (pa_cli_command_execute_file(c, filename, buf, fail) < 0 && *fail) {
                         return -1;

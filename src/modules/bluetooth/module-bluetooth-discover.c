@@ -149,8 +149,5 @@ void pa__done(pa_module* m) {
     if (u->bluez5_module_idx != PA_INVALID_INDEX)
         pa_module_unload_by_index(m->core, u->bluez5_module_idx, true);
 
-    if (u->bluez4_module_idx != PA_INVALID_INDEX)
-        pa_module_unload_by_index(m->core, u->bluez4_module_idx, true);
-
     pa_xfree(u);
 }

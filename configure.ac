@@ -28,6 +28,8 @@ AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_AUX_DIR([build-aux])
 AM_INIT_AUTOMAKE([foreign 1.11 -Wall -Wno-portability subdir-objects silent-rules color-tests dist-xz tar-ustar])
 
+AM_MAINTAINER_MODE([enable])
+
 AS_IF([! test -n "$VERSION"], [
    AC_MSG_ERROR([git-version-gen failed])
 ])
@@ -40,22 +42,19 @@ AC_SUBST(PA_MINOR, pa_minor)
 AC_SUBST(PA_MAJORMINOR, pa_major.pa_minor)
 
 AC_SUBST(PA_API_VERSION, 12)
-AC_SUBST(PA_PROTOCOL_VERSION, 32)
+AC_SUBST(PA_PROTOCOL_VERSION, 34)
 
 # The stable ABI for client applications, for the version info x:y:z
-# always will hold y=z
-AC_SUBST(LIBPULSE_VERSION_INFO, [20:3:20])
+# always will hold x=z
+AC_SUBST(LIBPULSE_VERSION_INFO, [23:0:23])
 
 # A simplified, synchronous, ABI-stable interface for client
-# applications, for the version info x:y:z always will hold y=z
+# applications, for the version info x:y:z always will hold x=z
 AC_SUBST(LIBPULSE_SIMPLE_VERSION_INFO, [1:1:1])
 
 # The ABI-stable GLib adapter for client applications, for the version
-# info x:y:z always will hold y=z
-AC_SUBST(LIBPULSE_MAINLOOP_GLIB_VERSION_INFO, [0:5:0])
-
-AC_CANONICAL_HOST
-AC_DEFINE_UNQUOTED([CANONICAL_HOST], "$host", [Canonical host string.])
+# info x:y:z always will hold x=z
+AC_SUBST(LIBPULSE_MAINLOOP_GLIB_VERSION_INFO, [0:6:0])
 
 AC_CHECK_PROG([STOW], [stow], [yes], [no])
 
@@ -99,21 +98,12 @@ PKG_PROG_PKG_CONFIG
 
 # gettext
 
-if test "x$enable_nls" != "xno"; then
-IT_PROG_INTLTOOL([0.35.0])
-
-AM_GNU_GETTEXT_VERSION([0.18.1])
+AM_GNU_GETTEXT_VERSION([0.19.8])
 AM_GNU_GETTEXT([external])
 
 GETTEXT_PACKAGE=pulseaudio
 AC_SUBST([GETTEXT_PACKAGE])
 AC_DEFINE_UNQUOTED([GETTEXT_PACKAGE],["$GETTEXT_PACKAGE"],[Gettext package])
-else
-# workaround till an intltool m4 bug is fixed upstream
-# (https://bugs.launchpad.net/intltool/+bug/904647)
-USE_NLS=no
-AC_SUBST(USE_NLS)
-fi
 
 
 #### Determine host OS ####
@@ -182,7 +172,7 @@ AX_CHECK_COMPILE_FLAG([-std=gnu11],
    [-pedantic -Werror])
 
 AX_APPEND_COMPILE_FLAGS(
-    [-Wall -W -Wextra -pipe -Wno-long-long -Wno-overlength-strings -Wunsafe-loop-optimizations -Wundef -Wformat=2 -Wlogical-op -Wsign-compare -Wformat-security -Wmissing-include-dirs -Wformat-nonliteral -Wold-style-definition -Wpointer-arith -Winit-self -Wdeclaration-after-statement -Wfloat-equal -Wmissing-prototypes -Wstrict-prototypes -Wredundant-decls -Wmissing-declarations -Wmissing-noreturn -Wshadow -Wendif-labels -Wcast-align -Wstrict-aliasing -Wwrite-strings -Wno-unused-parameter -ffast-math -fno-common -fdiagnostics-show-option -fdiagnostics-color=auto],
+    [-Wall -W -Wextra -pipe -Wno-long-long -Wno-overlength-strings -Wunsafe-loop-optimizations -Wundef -Wformat=2 -Wlogical-op -Wsign-compare -Wformat-security -Wmissing-include-dirs -Wformat-nonliteral -Wold-style-definition -Wpointer-arith -Winit-self -Wdeclaration-after-statement -Wfloat-equal -Wmissing-prototypes -Wstrict-prototypes -Wredundant-decls -Wmissing-declarations -Wmissing-noreturn -Wshadow -Wendif-labels -Wcast-align -Wstrict-aliasing -Wwrite-strings -Wno-unused-parameter -fno-common -fdiagnostics-show-option -fdiagnostics-color=auto],
     [], [-pedantic -Werror])
 
 AS_CASE([" $CFLAGS "], [*" -O0 "*], [], [
@@ -253,6 +243,15 @@ fi
 # If everything else fails use libatomic_ops
 need_libatomic_ops=yes
 
+AC_CACHE_CHECK([whether $CC knows __atomic_store_n()],
+    pulseaudio_cv_atomic_store_n, [
+    AC_LINK_IFELSE(
+        [AC_LANG_PROGRAM([], [[int c = 0; __atomic_store_n(&c, 4, __ATOMIC_SEQ_CST);]])],
+        [pulseaudio_cv_atomic_store_n=yes],
+        [pulseaudio_cv_atomic_store_n=no])
+    ])
+
+
 AC_CACHE_CHECK([whether $CC knows __sync_bool_compare_and_swap()],
     pulseaudio_cv_sync_bool_compare_and_swap, [
     AC_LINK_IFELSE(
@@ -263,6 +262,9 @@ AC_CACHE_CHECK([whether $CC knows __sync_bool_compare_and_swap()],
 
 if test "$pulseaudio_cv_sync_bool_compare_and_swap" = "yes" ; then
     AC_DEFINE([HAVE_ATOMIC_BUILTINS], 1, [Have __sync_bool_compare_and_swap() and friends.])
+    if test "$pulseaudio_cv_atomic_store_n" = "yes" ; then
+         AC_DEFINE([HAVE_ATOMIC_BUILTINS_MEMORY_MODEL], 1, [Have __atomic_store_n() and friends.])
+    fi
     need_libatomic_ops=no
 else
     # HW specific atomic ops stuff
@@ -556,10 +558,12 @@ AC_FUNC_GETGROUPS
 AC_CHECK_FUNCS_ONCE([chmod chown fstat fchown fchmod clock_gettime getaddrinfo getgrgid_r getgrnam_r \
     getpwnam_r getpwuid_r gettimeofday getuid mlock nanosleep \
     pipe posix_fadvise posix_madvise posix_memalign setpgid setsid shm_open \
-    sigaction sleep symlink sysconf uname pthread_setaffinity_np pthread_getname_np pthread_setname_np])
+    sigaction sleep symlink sysconf uname pthread_getname_np pthread_setname_np])
 AC_CHECK_FUNCS([mkfifo], [HAVE_MKFIFO=1], [HAVE_MKFIFO=0])
 AC_SUBST(HAVE_MKFIFO)
 AM_CONDITIONAL(HAVE_MKFIFO, test "x$HAVE_MKFIFO" = "x1")
+AC_CHECK_FUNCS([pthread_setaffinity_np], [HAVE_PTHREAD_SETAFFINITY_NP=1], [HAVE_PTHREAD_SETAFFINITY_NP=0])
+AM_CONDITIONAL(HAVE_PTHREAD_SETAFFINITY_NP, test "x$HAVE_PTHREAD_SETAFFINITY_NP" = "x1")
 
 # X/OPEN
 AC_CHECK_FUNCS_ONCE([readlink])
@@ -833,7 +837,7 @@ AS_IF([test "x$enable_alsa" = "xyes" && test "x$HAVE_ALSA" = "x0"],
 AS_IF([test "x$HAVE_ALSA" = "x1"],
     [
         save_CPPFLAGS="$CPPFLAGS"; CPPFLAGS="$CPPFLAGS $ASOUNDLIB_CFLAGS"
-        AC_CHECK_HEADERS([use-case.h], HAVE_ALSA_UCM=1, HAVE_ALSA_UCM=0)
+        AC_CHECK_HEADERS([alsa/use-case.h], HAVE_ALSA_UCM=1, HAVE_ALSA_UCM=0)
         CPPFLAGS="$save_CPPFLAGS"
     ],
     HAVE_ALSA_UCM=0)
@@ -998,6 +1002,16 @@ AS_IF([test "x$enable_asyncns" = "xyes" && test "x$HAVE_LIBASYNCNS" = "x0"],
 AM_CONDITIONAL([HAVE_LIBASYNCNS], [test "x$HAVE_LIBASYNCNS" = x1])
 AS_IF([test "x$HAVE_LIBASYNCNS" = "x1"], AC_DEFINE([HAVE_LIBASYNCNS], 1, [Have libasyncns?]))
 
+#### Running from build tree (optional) ####
+
+AC_ARG_ENABLE([running-from-build-tree],
+    AS_HELP_STRING([--disable-running-from-build-tree],[Disable running from build tree]))
+
+AS_IF([test "x$enable_running_from_build_tree" != "xno"],
+      AC_DEFINE([HAVE_RUNNING_FROM_BUILD_TREE], 1, [Have running from build tree]))
+
+AC_SUBST(HAVE_RUNNING_FROM_BUILD_TREE)
+
 #### TCP wrappers (optional) ####
 
 AC_ARG_ENABLE([tcpwrap],
@@ -1050,15 +1064,6 @@ AS_IF([test "x$enable_dbus" != "xno"],
 AS_IF([test "x$enable_dbus" = "xyes" && test "x$HAVE_DBUS" = "x0"],
     [AC_MSG_ERROR([*** D-Bus not available or too old version])])
 
-AS_IF([test "x$HAVE_DBUS" = "x1"],
-    [
-        save_CFLAGS="$CFLAGS"; CFLAGS="$CFLAGS $DBUS_CFLAGS"
-        save_LIBS="$LIBS"; LIBS="$LIBS $DBUS_LIBS"
-        AC_CHECK_FUNCS(dbus_watch_get_unix_fd)
-        CFLAGS="$save_CFLAGS"
-        LIBS="$save_LIBS"
-    ])
-
 AC_SUBST(HAVE_DBUS)
 AM_CONDITIONAL([HAVE_DBUS], [test "x$HAVE_DBUS" = x1])
 AS_IF([test "x$HAVE_DBUS" = "x1"], AC_DEFINE([HAVE_DBUS], 1, [Have D-Bus.]))
@@ -1071,23 +1076,13 @@ AX_DEFINE_DIR(PA_MACHINE_ID_FALLBACK, PA_MACHINE_ID_FALLBACK,
 
 #### BlueZ support (optional, dependent on D-Bus and SBC) ####
 
-AC_ARG_ENABLE([bluez4],
-    AS_HELP_STRING([--disable-bluez4],[Disable optional BlueZ 4 support]))
 AC_ARG_ENABLE([bluez5],
     AS_HELP_STRING([--disable-bluez5],[Disable optional BlueZ 5 support]))
 
 ## SBC ##
-AS_IF([test "x$enable_bluez4" != "xno" || test "x$enable_bluez5" != "xno"],
+AS_IF([test "x$enable_bluez5" != "xno"],
     [PKG_CHECK_MODULES(SBC, [ sbc >= 1.0 ], HAVE_SBC=1, HAVE_SBC=0)],
     HAVE_SBC=0)
-
-## BlueZ 4 ##
-AS_IF([test "x$enable_bluez4" != "xno" && test "x$HAVE_DBUS" = "x1" && test "x$HAVE_SBC" = "x1"], HAVE_BLUEZ_4=1,
-      HAVE_BLUEZ_4=0)
-AS_IF([test "x$enable_bluez4" = "xyes" && test "x$HAVE_BLUEZ_4" != "x1"],
-    [AC_MSG_ERROR([*** BLUEZ 4 support not found (requires sbc and D-Bus)])])
-AC_SUBST(HAVE_BLUEZ_4)
-AM_CONDITIONAL([HAVE_BLUEZ_4], [test "x$HAVE_BLUEZ_4" = x1])
 
 ## BlueZ 5 ##
 AS_IF([test "x$enable_bluez5" != "xno" && test "x$HAVE_DBUS" = "x1" && test "x$HAVE_SBC" = "x1"], HAVE_BLUEZ_5=1,
@@ -1097,7 +1092,7 @@ AS_IF([test "x$enable_bluez5" = "xyes" && test "x$HAVE_BLUEZ_5" != "x1"],
 AC_SUBST(HAVE_BLUEZ_5)
 AM_CONDITIONAL([HAVE_BLUEZ_5], [test "x$HAVE_BLUEZ_5" = x1])
 
-AS_IF([test "x$HAVE_BLUEZ_4" = "x1" || test "x$HAVE_BLUEZ_5" = "x1"], HAVE_BLUEZ=1, HAVE_BLUEZ=0)
+AS_IF([test "x$HAVE_BLUEZ_5" = "x1"], HAVE_BLUEZ=1, HAVE_BLUEZ=0)
 AC_SUBST(HAVE_BLUEZ)
 AM_CONDITIONAL([HAVE_BLUEZ], [test "x$HAVE_BLUEZ" = x1])
 
@@ -1314,6 +1309,22 @@ AC_SUBST(HAVE_SYSTEMD_JOURNAL)
 AM_CONDITIONAL([HAVE_SYSTEMD_JOURNAL], [test "x$HAVE_SYSTEMD_JOURNAL" = x1])
 AS_IF([test "x$HAVE_SYSTEMD_JOURNAL" = "x1"], AC_DEFINE([HAVE_SYSTEMD_JOURNAL], 1, [Have SYSTEMDJOURNAL?]))
 
+#### GStreamer-based RTP support (optional) ####
+
+AC_ARG_ENABLE([gstreamer],
+    AS_HELP_STRING([--enable-gstreamer],[Enable optional GStreamer-based RTP support]))
+
+AS_IF([test "x$enable_gstreamer" = "xyes"],
+    [PKG_CHECK_MODULES(GSTREAMER, [ gstreamer-1.0 >= 1.14 gstreamer-app-1.0 gstreamer-rtp-1.0 gio-2.0 ],
+                       HAVE_GSTREAMER=1, HAVE_GSTREAMER=0)],
+    HAVE_GSTREAMER=0)
+
+AS_IF([test "x$enable_gstreamer" = "xyes" && test "x$HAVE_GSTREAMER" = "x0"],
+    [AC_MSG_ERROR([*** GStreamer 1.0 support not found])])
+
+AM_CONDITIONAL([HAVE_GSTREAMER], [test "x$HAVE_GSTREAMER" = x1])
+AS_IF([test "x$HAVE_GSTREAMER" = "x1"], AC_DEFINE([HAVE_GSTREAMER], 1, [Have GStreamer?]))
+
 #### Build and Install man pages ####
 
 AC_ARG_ENABLE([manpages],
@@ -1465,6 +1476,12 @@ if test "x$enable_legacy_database_entry_format" != "xno" ; then
         AC_DEFINE(ENABLE_LEGACY_DATABASE_ENTRY_FORMAT, [1], [Legacy database entry format])
 fi
 
+AC_ARG_ENABLE([stream-restore-clear-old-devices],
+    AS_HELP_STRING([--enable-stream-restore-clear-old-devices], [Forget per-stream routing settings that have been set before version 14.0. Recommended when using GNOME. See https://gitlab.freedesktop.org/pulseaudio/pulseaudio/-/issues/832]))
+if test "x$enable_stream_restore_clear_old_devices" == "xyes" ; then
+    AC_DEFINE(STREAM_RESTORE_CLEAR_OLD_DEVICES, [1], [module-stream-restore: Clear old devices])
+fi
+
 AC_ARG_ENABLE([static-bins],
     AS_HELP_STRING([--enable-static-bins],[Statically link executables.]))
 AM_CONDITIONAL([STATIC_BINS], [test "x$enable_static_bins" = "xyes"])
@@ -1490,6 +1507,13 @@ AC_ARG_WITH(
 
 AC_SUBST(modlibexecdir)
 AX_DEFINE_DIR(PA_DLSEARCHPATH, modlibexecdir, [Modules dir])
+
+AC_ARG_WITH(
+        [alsa-data-dir],
+        AS_HELP_STRING([--with-alsa-data-dir],[Directory for ALSA card profiles (defaults to ${datadir}/pulseaudio/alsa-mixer)]),
+        [alsadatadir=$withval], [alsadatadir="${datadir}/pulseaudio/alsa-mixer"])
+
+AC_SUBST(alsadatadir)
 
 AC_ARG_WITH(
         [udev-rules-dir],
@@ -1524,6 +1548,13 @@ else
 fi
 
 AM_CONDITIONAL([FORCE_PREOPEN], [test "x$FORCE_PREOPEN" = "xyes"])
+
+# Substitute the variable with an empty string. This makes the output go to the
+# directory where doxygen is run (which is the doxygen directory under the
+# build directory). Substituting a variable with a constant value wouldn't
+# otherwise make sense, but the substitution variable needs to exist, because
+# we substitute a different value when using Meson.
+AC_SUBST([DOXYGEN_OUTPUT_DIRECTORY], [])
 
 AC_CONFIG_FILES([
 Makefile
@@ -1605,7 +1636,6 @@ AS_IF([test "x$HAVE_UDEV" = "x1"], ENABLE_UDEV=yes, ENABLE_UDEV=no)
 AS_IF([test "x$HAVE_SYSTEMD_DAEMON" = "x1"], ENABLE_SYSTEMD_DAEMON=yes, ENABLE_SYSTEMD_DAEMON=no)
 AS_IF([test "x$HAVE_SYSTEMD_LOGIN" = "x1"], ENABLE_SYSTEMD_LOGIN=yes, ENABLE_SYSTEMD_LOGIN=no)
 AS_IF([test "x$HAVE_SYSTEMD_JOURNAL" = "x1"], ENABLE_SYSTEMD_JOURNAL=yes, ENABLE_SYSTEMD_JOURNAL=no)
-AS_IF([test "x$HAVE_BLUEZ_4" = "x1"], ENABLE_BLUEZ_4=yes, ENABLE_BLUEZ_4=no)
 AS_IF([test "x$HAVE_BLUEZ_5" = "x1"], ENABLE_BLUEZ_5=yes, ENABLE_BLUEZ_5=no)
 AS_IF([test "x$HAVE_BLUEZ_5_OFONO_HEADSET" = "x1"], ENABLE_BLUEZ_5_OFONO_HEADSET=yes, ENABLE_BLUEZ_5_OFONO_HEADSET=no)
 AS_IF([test "x$HAVE_BLUEZ_5_NATIVE_HEADSET" = "x1"], ENABLE_BLUEZ_5_NATIVE_HEADSET=yes, ENABLE_BLUEZ_5_NATIVE_HEADSET=no)
@@ -1620,6 +1650,7 @@ AS_IF([test "x$HAVE_ADRIAN_EC" = "x1"], ENABLE_ADRIAN_EC=yes, ENABLE_ADRIAN_EC=n
 AS_IF([test "x$HAVE_SPEEX" = "x1"], ENABLE_SPEEX=yes, ENABLE_SPEEX=no)
 AS_IF([test "x$HAVE_SOXR" = "x1"], ENABLE_SOXR=yes, ENABLE_SOXR=no)
 AS_IF([test "x$HAVE_WEBRTC" = "x1"], ENABLE_WEBRTC=yes, ENABLE_WEBRTC=no)
+AS_IF([test "x$HAVE_GSTREAMER" = "x1"], ENABLE_GSTREAMER=yes, ENABLE_GSTREAMER=no)
 AS_IF([test "x$HAVE_TDB" = "x1"], ENABLE_TDB=yes, ENABLE_TDB=no)
 AS_IF([test "x$HAVE_GDBM" = "x1"], ENABLE_GDBM=yes, ENABLE_GDBM=no)
 AS_IF([test "x$HAVE_SIMPLEDB" = "x1"], ENABLE_SIMPLEDB=yes, ENABLE_SIMPLEDB=no)
@@ -1628,6 +1659,7 @@ AS_IF([test "x$HAVE_ESOUND" = "x1" -a "x$USE_PER_USER_ESOUND_SOCKET" = "x1"], EN
 AS_IF([test "x$HAVE_GCOV" = "x1"], ENABLE_GCOV=yes, ENABLE_GCOV=no)
 AS_IF([test "x$HAVE_LIBCHECK" = "x1"], ENABLE_TESTS=yes, ENABLE_TESTS=no)
 AS_IF([test "x$enable_legacy_database_entry_format" != "xno"], ENABLE_LEGACY_DATABASE_ENTRY_FORMAT=yes, ENABLE_LEGACY_DATABASE_ENTRY_FORMAT=no)
+AS_IF([test "x$enable_stream_restore_clear_old_devices" == "xyes"], ENABLE_STREAM_RESTORE_CLEAR_OLD_DEVICES=yes, ENABLE_STREAM_RESTORE_CLEAR_OLD_DEVICES=no)
 
 echo "
  ---{ $PACKAGE_NAME $VERSION }---
@@ -1636,6 +1668,7 @@ echo "
     sysconfdir:                    ${sysconfdir}
     localstatedir:                 ${localstatedir}
     modlibexecdir:                 ${modlibexecdir}
+    alsadatadir:                   ${alsadatadir}
     System Runtime Path:           ${PA_SYSTEM_RUNTIME_PATH}
     System State Path:             ${PA_SYSTEM_STATE_PATH}
     System Config Path:            ${PA_SYSTEM_CONFIG_PATH}
@@ -1664,7 +1697,6 @@ echo "
     Enable Async DNS:              ${ENABLE_LIBASYNCNS}
     Enable LIRC:                   ${ENABLE_LIRC}
     Enable D-Bus:                  ${ENABLE_DBUS}
-      Enable BlueZ 4:              ${ENABLE_BLUEZ_4}
       Enable BlueZ 5:              ${ENABLE_BLUEZ_5}
         Enable ofono headsets:     ${ENABLE_BLUEZ_5_OFONO_HEADSET}
         Enable native headsets:    ${ENABLE_BLUEZ_5_NATIVE_HEADSET}
@@ -1684,6 +1716,7 @@ echo "
     Enable speex (resampler, AEC): ${ENABLE_SPEEX}
     Enable soxr (resampler):       ${ENABLE_SOXR}
     Enable WebRTC echo canceller:  ${ENABLE_WEBRTC}
+    Enable GStreamer-based RTP:    ${ENABLE_GSTREAMER}
     Enable gcov coverage:          ${ENABLE_GCOV}
     Enable unit tests:             ${ENABLE_TESTS}
     Database
@@ -1699,6 +1732,8 @@ echo "
     Preopened modules:             ${PREOPEN_MODS}
 
     Legacy Database Entry Support: ${ENABLE_LEGACY_DATABASE_ENTRY_FORMAT}
+    module-stream-restore:
+      Clear old devices:           ${ENABLE_STREAM_RESTORE_CLEAR_OLD_DEVICES}
 "
 
 if test "${ENABLE_SPEEX}" = "no" && test "${ENABLE_WEBRTC}" = "no" && test "${ENABLE_ADRIAN_EC}" = "no" ; then
@@ -1713,7 +1748,7 @@ that you enable D-Bus support if your platform supports it.
 Many parts of PulseAudio use D-Bus, from ConsoleKit interaction
 to the Device Reservation Protocol to speak to JACK, Bluetooth
 support and even a native control protocol for communicating and
-controling the PulseAudio daemon itself.
+controlling the PulseAudio daemon itself.
 ===== WARNING WARNING WARNING WARNING WARNING WARNING WARNING =====
 "
 fi

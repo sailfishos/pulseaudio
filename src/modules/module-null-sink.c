@@ -28,6 +28,7 @@
 
 #include <pulse/rtclock.h>
 #include <pulse/timeval.h>
+#include <pulse/util.h>
 #include <pulse/xmalloc.h>
 
 #include <pulsecore/i18n.h>
@@ -51,10 +52,13 @@ PA_MODULE_USAGE(
         "format=<sample format> "
         "rate=<sample rate> "
         "channels=<number of channels> "
-        "channel_map=<channel map>");
+        "channel_map=<channel map>"
+        "formats=<semi-colon separated sink formats>"
+        "norewinds=<disable rewinds>");
 
 #define DEFAULT_SINK_NAME "null"
 #define BLOCK_USEC (PA_USEC_PER_SEC * 2)
+#define NOREWINDS_MAX_LATENCY_USEC (50*PA_USEC_PER_MSEC)
 
 struct userdata {
     pa_core *core;
@@ -67,6 +71,10 @@ struct userdata {
 
     pa_usec_t block_usec;
     pa_usec_t timestamp;
+
+    pa_idxset *formats;
+
+    bool norewinds;
 };
 
 static const char* const valid_modargs[] = {
@@ -76,6 +84,8 @@ static const char* const valid_modargs[] = {
     "rate",
     "channels",
     "channel_map",
+    "formats",
+    "norewinds",
     NULL
 };
 
@@ -109,7 +119,7 @@ static int sink_set_state_in_io_thread_cb(pa_sink *s, pa_sink_state_t new_state,
     pa_assert(s);
     pa_assert_se(u = s->userdata);
 
-    if (u->sink->thread_info.state == PA_SINK_SUSPENDED || u->sink->thread_info.state == PA_SINK_INIT) {
+    if (s->thread_info.state == PA_SINK_SUSPENDED || s->thread_info.state == PA_SINK_INIT) {
         if (PA_SINK_IS_OPENED(new_state))
             u->timestamp = pa_rtclock_now();
     }
@@ -130,8 +140,38 @@ static void sink_update_requested_latency_cb(pa_sink *s) {
         u->block_usec = s->thread_info.max_latency;
 
     nbytes = pa_usec_to_bytes(u->block_usec, &s->sample_spec);
-    pa_sink_set_max_rewind_within_thread(s, nbytes);
+
+    if(u->norewinds){
+        pa_sink_set_max_rewind_within_thread(s, 0);
+    } else {
+        pa_sink_set_max_rewind_within_thread(s, nbytes);
+    }
+
     pa_sink_set_max_request_within_thread(s, nbytes);
+}
+
+static void sink_reconfigure_cb(pa_sink *s, pa_sample_spec *spec, bool passthrough) {
+    /* We don't need to do anything */
+    s->sample_spec = *spec;
+}
+
+static bool sink_set_formats_cb(pa_sink *s, pa_idxset *formats) {
+    struct userdata *u = s->userdata;
+
+    pa_assert(u);
+
+    pa_idxset_free(u->formats, (pa_free_cb_t) pa_format_info_free);
+    u->formats = pa_idxset_copy(formats, (pa_copy_func_t) pa_format_info_copy);
+
+    return true;
+}
+
+static pa_idxset* sink_get_formats_cb(pa_sink *s) {
+    struct userdata *u = s->userdata;
+
+    pa_assert(u);
+
+    return pa_idxset_copy(u->formats, (pa_copy_func_t) pa_format_info_copy);
 }
 
 static void process_rewind(struct userdata *u, pa_usec_t now) {
@@ -206,6 +246,9 @@ static void thread_func(void *userdata) {
 
     pa_log_debug("Thread starting up");
 
+    if (u->core->realtime_scheduling)
+        pa_thread_make_realtime(u->core->realtime_priority);
+
     pa_thread_mq_install(&u->thread_mq);
 
     u->timestamp = pa_rtclock_now();
@@ -253,6 +296,8 @@ int pa__init(pa_module*m) {
     pa_channel_map map;
     pa_modargs *ma = NULL;
     pa_sink_new_data data;
+    pa_format_info *format;
+    const char *formats;
     size_t nbytes;
 
     pa_assert(m);
@@ -288,13 +333,36 @@ int pa__init(pa_module*m) {
     pa_proplist_sets(data.proplist, PA_PROP_DEVICE_DESCRIPTION, _("Null Output"));
     pa_proplist_sets(data.proplist, PA_PROP_DEVICE_CLASS, "abstract");
 
+    u->formats = pa_idxset_new(NULL, NULL);
+    if ((formats = pa_modargs_get_value(ma, "formats", NULL))) {
+        char *f = NULL;
+        const char *state = NULL;
+
+        while ((f = pa_split(formats, ";", &state))) {
+            format = pa_format_info_from_string(pa_strip(f));
+
+            if (!format) {
+                pa_log(_("Failed to set format: invalid format string %s"), f);
+		pa_xfree(f);
+                goto fail;
+            }
+            pa_xfree(f);
+
+            pa_idxset_put(u->formats, format, NULL);
+        }
+    } else {
+        format = pa_format_info_new();
+        format->encoding = PA_ENCODING_PCM;
+        pa_idxset_put(u->formats, format, NULL);
+    }
+
     if (pa_modargs_get_proplist(ma, "sink_properties", data.proplist, PA_UPDATE_REPLACE) < 0) {
         pa_log("Invalid properties");
         pa_sink_new_data_done(&data);
         goto fail;
     }
 
-    u->sink = pa_sink_new(m->core, &data, PA_SINK_LATENCY|PA_SINK_DYNAMIC_LATENCY);
+    u->sink = pa_sink_new(m->core, &data, PA_SINK_LATENCY | PA_SINK_DYNAMIC_LATENCY | PA_SINK_SET_FORMATS);
     pa_sink_new_data_done(&data);
 
     if (!u->sink) {
@@ -305,6 +373,9 @@ int pa__init(pa_module*m) {
     u->sink->parent.process_msg = sink_process_msg;
     u->sink->set_state_in_io_thread = sink_set_state_in_io_thread_cb;
     u->sink->update_requested_latency = sink_update_requested_latency_cb;
+    u->sink->reconfigure = sink_reconfigure_cb;
+    u->sink->get_formats = sink_get_formats_cb;
+    u->sink->set_formats = sink_set_formats_cb;
     u->sink->userdata = u;
 
     pa_sink_set_asyncmsgq(u->sink, u->thread_mq.inq);
@@ -312,7 +383,17 @@ int pa__init(pa_module*m) {
 
     u->block_usec = BLOCK_USEC;
     nbytes = pa_usec_to_bytes(u->block_usec, &u->sink->sample_spec);
-    pa_sink_set_max_rewind(u->sink, nbytes);
+
+    if(pa_modargs_get_value_boolean(ma, "norewinds", &u->norewinds) < 0){
+        pa_log("Invalid argument, norewinds expects a boolean value.");
+    }
+
+    if(u->norewinds){
+        pa_sink_set_max_rewind(u->sink, 0);
+    } else {
+        pa_sink_set_max_rewind(u->sink, nbytes);
+    }
+
     pa_sink_set_max_request(u->sink, nbytes);
 
     if (!(u->thread = pa_thread_new("null-sink", thread_func, u))) {
@@ -320,7 +401,11 @@ int pa__init(pa_module*m) {
         goto fail;
     }
 
-    pa_sink_set_latency_range(u->sink, 0, BLOCK_USEC);
+    if(u->norewinds){
+        pa_sink_set_latency_range(u->sink, 0, NOREWINDS_MAX_LATENCY_USEC);
+    } else {
+        pa_sink_set_latency_range(u->sink, 0, BLOCK_USEC);
+    }
 
     pa_sink_put(u->sink);
 
@@ -369,6 +454,9 @@ void pa__done(pa_module*m) {
 
     if (u->rtpoll)
         pa_rtpoll_free(u->rtpoll);
+
+    if (u->formats)
+        pa_idxset_free(u->formats, (pa_free_cb_t) pa_format_info_free);
 
     pa_xfree(u);
 }

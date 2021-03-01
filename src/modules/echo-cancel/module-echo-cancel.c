@@ -146,8 +146,8 @@ static const pa_echo_canceller ec_table[] = {
 #define MAX_LATENCY_BLOCKS 10
 
 /* Can only be used in main context */
-#define IS_ACTIVE(u) ((pa_source_get_state((u)->source) == PA_SOURCE_RUNNING) && \
-                      (pa_sink_get_state((u)->sink) == PA_SINK_RUNNING))
+#define IS_ACTIVE(u) (((u)->source->state == PA_SOURCE_RUNNING) && \
+                      ((u)->sink->state == PA_SINK_RUNNING))
 
 /* This module creates a new (virtual) source and sink.
  *
@@ -471,12 +471,12 @@ static int source_set_state_in_main_thread_cb(pa_source *s, pa_source_state_t st
     pa_assert_se(u = s->userdata);
 
     if (!PA_SOURCE_IS_LINKED(state) ||
-        !PA_SOURCE_OUTPUT_IS_LINKED(pa_source_output_get_state(u->source_output)))
+        !PA_SOURCE_OUTPUT_IS_LINKED(u->source_output->state))
         return 0;
 
     if (state == PA_SOURCE_RUNNING) {
         /* restart timer when both sink and source are active */
-        if ((pa_sink_get_state(u->sink) == PA_SINK_RUNNING) && u->adjust_time)
+        if ((u->sink->state == PA_SINK_RUNNING) && u->adjust_time)
             pa_core_rttime_restart(u->core, u->time_event, pa_rtclock_now() + u->adjust_time);
 
         pa_atomic_store(&u->request_resync, 1);
@@ -496,12 +496,12 @@ static int sink_set_state_in_main_thread_cb(pa_sink *s, pa_sink_state_t state, p
     pa_assert_se(u = s->userdata);
 
     if (!PA_SINK_IS_LINKED(state) ||
-        !PA_SINK_INPUT_IS_LINKED(pa_sink_input_get_state(u->sink_input)))
+        !PA_SINK_INPUT_IS_LINKED(u->sink_input->state))
         return 0;
 
     if (state == PA_SINK_RUNNING) {
         /* restart timer when both sink and source are active */
-        if ((pa_source_get_state(u->source) == PA_SOURCE_RUNNING) && u->adjust_time)
+        if ((u->source->state == PA_SOURCE_RUNNING) && u->adjust_time)
             pa_core_rttime_restart(u->core, u->time_event, pa_rtclock_now() + u->adjust_time);
 
         pa_atomic_store(&u->request_resync, 1);
@@ -522,7 +522,7 @@ static int sink_set_state_in_io_thread_cb(pa_sink *s, pa_sink_state_t new_state,
 
     /* When set to running or idle for the first time, request a rewind
      * of the master sink to make sure we are heard immediately */
-    if ((new_state == PA_SINK_IDLE || new_state == PA_SINK_RUNNING) && u->sink->thread_info.state == PA_SINK_INIT) {
+    if (PA_SINK_IS_OPENED(new_state) && s->thread_info.state == PA_SINK_INIT) {
         pa_log_debug("Requesting rewind due to state change.");
         pa_sink_input_request_rewind(u->sink_input, 0, false, true, true);
     }
@@ -597,8 +597,8 @@ static void source_set_volume_cb(pa_source *s) {
     pa_source_assert_ref(s);
     pa_assert_se(u = s->userdata);
 
-    if (!PA_SOURCE_IS_LINKED(pa_source_get_state(s)) ||
-        !PA_SOURCE_OUTPUT_IS_LINKED(pa_source_output_get_state(u->source_output)))
+    if (!PA_SOURCE_IS_LINKED(s->state) ||
+        !PA_SOURCE_OUTPUT_IS_LINKED(u->source_output->state))
         return;
 
     pa_source_output_set_volume(u->source_output, &s->real_volume, s->save_volume, true);
@@ -611,8 +611,8 @@ static void sink_set_volume_cb(pa_sink *s) {
     pa_sink_assert_ref(s);
     pa_assert_se(u = s->userdata);
 
-    if (!PA_SINK_IS_LINKED(pa_sink_get_state(s)) ||
-        !PA_SINK_INPUT_IS_LINKED(pa_sink_input_get_state(u->sink_input)))
+    if (!PA_SINK_IS_LINKED(s->state) ||
+        !PA_SINK_INPUT_IS_LINKED(u->sink_input->state))
         return;
 
     pa_sink_input_set_volume(u->sink_input, &s->real_volume, s->save_volume, true);
@@ -626,8 +626,8 @@ static void source_get_volume_cb(pa_source *s) {
     pa_source_assert_ref(s);
     pa_assert_se(u = s->userdata);
 
-    if (!PA_SOURCE_IS_LINKED(pa_source_get_state(s)) ||
-        !PA_SOURCE_OUTPUT_IS_LINKED(pa_source_output_get_state(u->source_output)))
+    if (!PA_SOURCE_IS_LINKED(s->state) ||
+        !PA_SOURCE_OUTPUT_IS_LINKED(u->source_output->state))
         return;
 
     pa_source_output_get_volume(u->source_output, &v, true);
@@ -647,8 +647,8 @@ static void source_set_mute_cb(pa_source *s) {
     pa_source_assert_ref(s);
     pa_assert_se(u = s->userdata);
 
-    if (!PA_SOURCE_IS_LINKED(pa_source_get_state(s)) ||
-        !PA_SOURCE_OUTPUT_IS_LINKED(pa_source_output_get_state(u->source_output)))
+    if (!PA_SOURCE_IS_LINKED(s->state) ||
+        !PA_SOURCE_OUTPUT_IS_LINKED(u->source_output->state))
         return;
 
     pa_source_output_set_mute(u->source_output, s->muted, s->save_muted);
@@ -661,8 +661,8 @@ static void sink_set_mute_cb(pa_sink *s) {
     pa_sink_assert_ref(s);
     pa_assert_se(u = s->userdata);
 
-    if (!PA_SINK_IS_LINKED(pa_sink_get_state(s)) ||
-        !PA_SINK_INPUT_IS_LINKED(pa_sink_input_get_state(u->sink_input)))
+    if (!PA_SINK_IS_LINKED(s->state) ||
+        !PA_SINK_INPUT_IS_LINKED(u->sink_input->state))
         return;
 
     pa_sink_input_set_mute(u->sink_input, s->muted, s->save_muted);
@@ -902,7 +902,7 @@ static void source_output_push_cb(pa_source_output *o, const pa_memchunk *chunk)
     if (!PA_SOURCE_IS_LINKED(u->source->thread_info.state))
         return;
 
-    if (!PA_SOURCE_OUTPUT_IS_LINKED(pa_source_output_get_state(u->source_output))) {
+    if (!PA_SOURCE_OUTPUT_IS_LINKED(u->source_output->thread_info.state)) {
         pa_log("Push when no link?");
         return;
     }
@@ -1466,6 +1466,8 @@ static bool sink_input_may_move_to_cb(pa_sink_input *i, pa_sink *dest) {
 /* Called from main context. */
 static void source_output_moving_cb(pa_source_output *o, pa_source *dest) {
     struct userdata *u;
+    uint32_t idx;
+    pa_source_output *output;
 
     pa_source_output_assert_ref(o);
     pa_assert_ctl_context();
@@ -1476,6 +1478,12 @@ static void source_output_moving_cb(pa_source_output *o, pa_source *dest) {
         pa_source_update_flags(u->source, PA_SOURCE_LATENCY|PA_SOURCE_DYNAMIC_LATENCY, dest->flags);
     } else
         pa_source_set_asyncmsgq(u->source, NULL);
+
+    /* Propagate asyncmsq change to attached virtual sources */
+    PA_IDXSET_FOREACH(output, u->source->outputs, idx) {
+        if (output->destination_source && output->moving)
+            output->moving(output, u->source);
+    }
 
     if (u->source_auto_desc && dest) {
         const char *y, *z;

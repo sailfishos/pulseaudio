@@ -27,6 +27,7 @@
 #include <config.h>
 #endif
 
+#include <pulse/util.h>
 #include <pulse/xmalloc.h>
 
 #include <pulsecore/sink.h>
@@ -722,7 +723,7 @@ static void thread_func(void *userdata) {
     pa_log_debug("Thread starting up");
 
     if (u->module->core->realtime_scheduling)
-        pa_make_realtime(u->module->core->realtime_priority);
+        pa_thread_make_realtime(u->module->core->realtime_priority);
 
     pa_thread_mq_install(&u->thread_mq);
 

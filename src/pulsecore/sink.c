@@ -113,6 +113,13 @@ void pa_sink_new_data_set_alternate_sample_rate(pa_sink_new_data *data, const ui
     data->alternate_sample_rate = alternate_sample_rate;
 }
 
+void pa_sink_new_data_set_avoid_resampling(pa_sink_new_data *data, bool avoid_resampling) {
+    pa_assert(data);
+
+    data->avoid_resampling_is_set = true;
+    data->avoid_resampling = avoid_resampling;
+}
+
 void pa_sink_new_data_set_volume(pa_sink_new_data *data, const pa_cvolume *volume) {
     pa_assert(data);
 
@@ -271,6 +278,11 @@ pa_sink* pa_sink_new(
     else
         s->alternate_sample_rate = s->core->alternate_sample_rate;
 
+    if (data->avoid_resampling_is_set)
+        s->avoid_resampling = data->avoid_resampling;
+    else
+        s->avoid_resampling = s->core->avoid_resampling;
+
     s->inputs = pa_idxset_new(NULL, NULL);
     s->n_corked = 0;
     s->input_to_master = NULL;
@@ -361,6 +373,7 @@ pa_sink* pa_sink_new(
     pa_source_new_data_set_sample_spec(&source_data, &s->sample_spec);
     pa_source_new_data_set_channel_map(&source_data, &s->channel_map);
     pa_source_new_data_set_alternate_sample_rate(&source_data, s->alternate_sample_rate);
+    pa_source_new_data_set_avoid_resampling(&source_data, s->avoid_resampling);
     source_data.name = pa_sprintf_malloc("%s.monitor", name);
     source_data.driver = data->driver;
     source_data.module = data->module;
@@ -398,6 +411,8 @@ static int sink_set_state(pa_sink *s, pa_sink_state_t state, pa_suspend_cause_t 
     bool suspend_cause_changed;
     bool suspending;
     bool resuming;
+    pa_sink_state_t old_state;
+    pa_suspend_cause_t old_suspend_cause;
 
     pa_assert(s);
     pa_assert_ctl_context();
@@ -467,6 +482,7 @@ static int sink_set_state(pa_sink *s, pa_sink_state_t state, pa_suspend_cause_t 
         }
     }
 
+    old_suspend_cause = s->suspend_cause;
     if (suspend_cause_changed) {
         char old_cause_buf[PA_SUSPEND_CAUSE_TO_STRING_BUF_SIZE];
         char new_cause_buf[PA_SUSPEND_CAUSE_TO_STRING_BUF_SIZE];
@@ -476,6 +492,7 @@ static int sink_set_state(pa_sink *s, pa_sink_state_t state, pa_suspend_cause_t 
         s->suspend_cause = suspend_cause;
     }
 
+    old_state = s->state;
     if (state_changed) {
         pa_log_debug("%s: state: %s -> %s", s->name, pa_sink_state_to_string(s->state), pa_sink_state_to_string(state));
         s->state = state;
@@ -488,7 +505,7 @@ static int sink_set_state(pa_sink *s, pa_sink_state_t state, pa_suspend_cause_t 
         }
     }
 
-    if (suspending || resuming) {
+    if (suspending || resuming || suspend_cause_changed) {
         pa_sink_input *i;
         uint32_t idx;
 
@@ -499,7 +516,7 @@ static int sink_set_state(pa_sink *s, pa_sink_state_t state, pa_suspend_cause_t 
                 (i->flags & PA_SINK_INPUT_KILL_ON_SUSPEND))
                 pa_sink_input_kill(i);
             else if (i->suspend)
-                i->suspend(i, state == PA_SINK_SUSPENDED);
+                i->suspend(i, old_state, old_suspend_cause);
     }
 
     if ((suspending || resuming || suspend_cause_changed) && s->monitor_source && state != PA_SINK_UNLINKED)
@@ -687,8 +704,8 @@ void pa_sink_put(pa_sink* s) {
         pa_cvolume_remap(&s->real_volume, &root_sink->channel_map, &s->channel_map);
     } else
         /* We assume that if the sink implementor changed the default
-         * volume he did so in real_volume, because that is the usual
-         * place where he is supposed to place his changes.  */
+         * volume they did so in real_volume, because that is the usual
+         * place where they are supposed to place their changes.  */
         s->reference_volume = s->real_volume;
 
     s->thread_info.soft_volume = s->soft_volume;
@@ -717,9 +734,14 @@ void pa_sink_put(pa_sink* s) {
     pa_subscription_post(s->core, PA_SUBSCRIPTION_EVENT_SINK | PA_SUBSCRIPTION_EVENT_NEW, s->index);
     pa_hook_fire(&s->core->hooks[PA_CORE_HOOK_SINK_PUT], s);
 
-    /* This function must be called after the PA_CORE_HOOK_SINK_PUT hook,
-     * because module-switch-on-connect needs to know the old default sink */
+    /* It's good to fire the SINK_PUT hook before updating the default sink,
+     * because module-switch-on-connect will set the new sink as the default
+     * sink, and if we were to call pa_core_update_default_sink() before that,
+     * the default sink might change twice, causing unnecessary stream moving. */
+
     pa_core_update_default_sink(s->core);
+
+    pa_core_move_streams_to_newly_available_preferred_sink(s->core, s);
 }
 
 /* Called from main context */
@@ -750,6 +772,9 @@ void pa_sink_unlink(pa_sink* s) {
 
     pa_core_update_default_sink(s->core);
 
+    if (linked && s->core->rescue_streams)
+	pa_sink_move_streams_to_default_sink(s->core, s, false);
+
     if (s->card)
         pa_idxset_remove_by_data(s->card->sinks, s, NULL);
 
@@ -760,7 +785,11 @@ void pa_sink_unlink(pa_sink* s) {
     }
 
     if (linked)
-        sink_set_state(s, PA_SINK_UNLINKED, 0);
+        /* It's important to keep the suspend cause unchanged when unlinking,
+         * because if we remove the SESSION suspend cause here, the alsa sink
+         * will sync its volume with the hardware while another user is
+         * active, messing up the volume for that other user. */
+        sink_set_state(s, PA_SINK_UNLINKED, s->suspend_cause);
     else
         s->state = PA_SINK_UNLINKED;
 
@@ -1435,8 +1464,7 @@ void pa_sink_render_full(pa_sink *s, size_t length, pa_memchunk *result) {
 }
 
 /* Called from main thread */
-int pa_sink_reconfigure(pa_sink *s, pa_sample_spec *spec, bool passthrough) {
-    int ret = -1;
+void pa_sink_reconfigure(pa_sink *s, pa_sample_spec *spec, bool passthrough) {
     pa_sample_spec desired_spec;
     uint32_t default_rate = s->default_sample_rate;
     uint32_t alternate_rate = s->alternate_sample_rate;
@@ -1444,52 +1472,55 @@ int pa_sink_reconfigure(pa_sink *s, pa_sample_spec *spec, bool passthrough) {
     pa_sink_input *i;
     bool default_rate_is_usable = false;
     bool alternate_rate_is_usable = false;
-    bool avoid_resampling = s->core->avoid_resampling;
-
-    /* We currently only try to reconfigure the sample rate */
+    bool avoid_resampling = s->avoid_resampling;
 
     if (pa_sample_spec_equal(spec, &s->sample_spec))
-        return 0;
+        return;
 
     if (!s->reconfigure)
-        return -1;
+        return;
 
     if (PA_UNLIKELY(default_rate == alternate_rate && !passthrough && !avoid_resampling)) {
         pa_log_debug("Default and alternate sample rates are the same, so there is no point in switching.");
-        return -1;
+        return;
     }
 
     if (PA_SINK_IS_RUNNING(s->state)) {
-        pa_log_info("Cannot update rate, SINK_IS_RUNNING, will keep using %u Hz",
-                    s->sample_spec.rate);
-        return -1;
+        pa_log_info("Cannot update sample spec, SINK_IS_RUNNING, will keep using %s and %u Hz",
+                    pa_sample_format_to_string(s->sample_spec.format), s->sample_spec.rate);
+        return;
     }
 
     if (s->monitor_source) {
         if (PA_SOURCE_IS_RUNNING(s->monitor_source->state) == true) {
-            pa_log_info("Cannot update rate, monitor source is RUNNING");
-            return -1;
+            pa_log_info("Cannot update sample spec, monitor source is RUNNING");
+            return;
         }
     }
 
     if (PA_UNLIKELY(!pa_sample_spec_valid(spec)))
-        return -1;
+        return;
 
     desired_spec = s->sample_spec;
 
     if (passthrough) {
-        /* We have to try to use the sink input rate */
+        /* We have to try to use the sink input format and rate */
+        desired_spec.format = spec->format;
         desired_spec.rate = spec->rate;
 
-    } else if (avoid_resampling && (spec->rate >= default_rate || spec->rate >= alternate_rate)) {
+    } else if (avoid_resampling) {
         /* We just try to set the sink input's sample rate if it's not too low */
-        desired_spec.rate = spec->rate;
+        if (spec->rate >= default_rate || spec->rate >= alternate_rate)
+            desired_spec.rate = spec->rate;
+        desired_spec.format = spec->format;
 
     } else if (default_rate == spec->rate || alternate_rate == spec->rate) {
         /* We can directly try to use this rate */
         desired_spec.rate = spec->rate;
 
-    } else {
+    }
+
+    if (desired_spec.rate != spec->rate) {
         /* See if we can pick a rate that results in less resampling effort */
         if (default_rate % 11025 == 0 && spec->rate % 11025 == 0)
             default_rate_is_usable = true;
@@ -1507,31 +1538,28 @@ int pa_sink_reconfigure(pa_sink *s, pa_sample_spec *spec, bool passthrough) {
     }
 
     if (pa_sample_spec_equal(&desired_spec, &s->sample_spec) && passthrough == pa_sink_is_passthrough(s))
-        return -1;
+        return;
 
     if (!passthrough && pa_sink_used_by(s) > 0)
-        return -1;
+        return;
 
-    pa_log_debug("Suspending sink %s due to changing format.", s->name);
+    pa_log_debug("Suspending sink %s due to changing format, desired format = %s rate = %u",
+                 s->name, pa_sample_format_to_string(desired_spec.format), desired_spec.rate);
     pa_sink_suspend(s, true, PA_SUSPEND_INTERNAL);
 
-    if (s->reconfigure(s, &desired_spec, passthrough) >= 0) {
-        /* update monitor source as well */
-        if (s->monitor_source && !passthrough)
-            pa_source_reconfigure(s->monitor_source, &desired_spec, false);
-        pa_log_info("Changed format successfully");
+    s->reconfigure(s, &desired_spec, passthrough);
 
-        PA_IDXSET_FOREACH(i, s->inputs, idx) {
-            if (i->state == PA_SINK_INPUT_CORKED)
-                pa_sink_input_update_rate(i);
-        }
+    /* update monitor source as well */
+    if (s->monitor_source && !passthrough)
+        pa_source_reconfigure(s->monitor_source, &s->sample_spec, false);
+    pa_log_info("Reconfigured successfully");
 
-        ret = 0;
+    PA_IDXSET_FOREACH(i, s->inputs, idx) {
+        if (i->state == PA_SINK_INPUT_CORKED)
+            pa_sink_input_update_resampler(i);
     }
 
     pa_sink_suspend(s, false, PA_SUSPEND_INTERNAL);
-
-    return ret;
 }
 
 /* Called from main thread */
@@ -2454,22 +2482,18 @@ unsigned pa_sink_check_suspend(pa_sink *s, pa_sink_input *ignore_input, pa_sourc
     ret = 0;
 
     PA_IDXSET_FOREACH(i, s->inputs, idx) {
-        pa_sink_input_state_t st;
-
         if (i == ignore_input)
             continue;
-
-        st = pa_sink_input_get_state(i);
 
         /* We do not assert here. It is perfectly valid for a sink input to
          * be in the INIT state (i.e. created, marked done but not yet put)
          * and we should not care if it's unlinked as it won't contribute
          * towards our busy status.
          */
-        if (!PA_SINK_INPUT_IS_LINKED(st))
+        if (!PA_SINK_INPUT_IS_LINKED(i->state))
             continue;
 
-        if (st == PA_SINK_INPUT_CORKED)
+        if (i->state == PA_SINK_INPUT_CORKED)
             continue;
 
         if (i->flags & PA_SINK_INPUT_DONT_INHIBIT_AUTO_SUSPEND)
@@ -3864,6 +3888,43 @@ done:
     return out_formats;
 }
 
+/* Called from the main thread */
+void pa_sink_set_sample_format(pa_sink *s, pa_sample_format_t format) {
+    pa_sample_format_t old_format;
+
+    pa_assert(s);
+    pa_assert(pa_sample_format_valid(format));
+
+    old_format = s->sample_spec.format;
+    if (old_format == format)
+        return;
+
+    pa_log_info("%s: format: %s -> %s",
+                s->name, pa_sample_format_to_string(old_format), pa_sample_format_to_string(format));
+
+    s->sample_spec.format = format;
+
+    pa_subscription_post(s->core, PA_SUBSCRIPTION_EVENT_SINK | PA_SUBSCRIPTION_EVENT_CHANGE, s->index);
+}
+
+/* Called from the main thread */
+void pa_sink_set_sample_rate(pa_sink *s, uint32_t rate) {
+    uint32_t old_rate;
+
+    pa_assert(s);
+    pa_assert(pa_sample_rate_valid(rate));
+
+    old_rate = s->sample_spec.rate;
+    if (old_rate == rate)
+        return;
+
+    pa_log_info("%s: rate: %u -> %u", s->name, old_rate, rate);
+
+    s->sample_spec.rate = rate;
+
+    pa_subscription_post(s->core, PA_SUBSCRIPTION_EVENT_SINK | PA_SUBSCRIPTION_EVENT_CHANGE, s->index);
+}
+
 /* Called from the main thread. */
 void pa_sink_set_reference_volume_direct(pa_sink *s, const pa_cvolume *volume) {
     pa_cvolume old_volume;
@@ -3887,4 +3948,49 @@ void pa_sink_set_reference_volume_direct(pa_sink *s, const pa_cvolume *volume) {
 
     pa_subscription_post(s->core, PA_SUBSCRIPTION_EVENT_SINK|PA_SUBSCRIPTION_EVENT_CHANGE, s->index);
     pa_hook_fire(&s->core->hooks[PA_CORE_HOOK_SINK_VOLUME_CHANGED], s);
+}
+
+void pa_sink_move_streams_to_default_sink(pa_core *core, pa_sink *old_sink, bool default_sink_changed) {
+    pa_sink_input *i;
+    uint32_t idx;
+
+    pa_assert(core);
+    pa_assert(old_sink);
+
+    if (core->state == PA_CORE_SHUTDOWN)
+        return;
+
+    if (core->default_sink == NULL || core->default_sink->unlink_requested)
+        return;
+
+    if (old_sink == core->default_sink)
+        return;
+
+    PA_IDXSET_FOREACH(i, old_sink->inputs, idx) {
+        if (!PA_SINK_INPUT_IS_LINKED(i->state))
+            continue;
+
+        if (!i->sink)
+            continue;
+
+        /* Don't move sink-inputs which connect filter sinks to their target sinks */
+        if (i->origin_sink)
+            continue;
+
+        /* If default_sink_changed is false, the old sink became unavailable, so all streams must be moved. */
+        if (pa_safe_streq(old_sink->name, i->preferred_sink) && default_sink_changed)
+            continue;
+
+        if (!pa_sink_input_may_move_to(i, core->default_sink))
+            continue;
+
+        if (default_sink_changed)
+            pa_log_info("The sink input %u \"%s\" is moving to %s due to change of the default sink.",
+                        i->index, pa_strnull(pa_proplist_gets(i->proplist, PA_PROP_APPLICATION_NAME)), core->default_sink->name);
+        else
+            pa_log_info("The sink input %u \"%s\" is moving to %s, because the old sink became unavailable.",
+                        i->index, pa_strnull(pa_proplist_gets(i->proplist, PA_PROP_APPLICATION_NAME)), core->default_sink->name);
+
+        pa_sink_input_move_to(i, core->default_sink, false);
+    }
 }

@@ -113,6 +113,8 @@ typedef struct {
     pa_direction_t direction;
 } pa_card_preferred_port_changed_hook_data;
 
+const char *pa_available_to_string(pa_available_t available);
+
 pa_card_profile *pa_card_profile_new(const char *name, const char *description, size_t extra);
 void pa_card_profile_free(pa_card_profile *c);
 
@@ -128,7 +130,7 @@ pa_card *pa_card_new(pa_core *c, pa_card_new_data *data);
 
 /* Select the initial card profile according to the configured policies. This
  * must be called between pa_card_new() and pa_card_put(), after the port and
- * profile availablities have been initialized. */
+ * profile availabilities have been initialized. */
 void pa_card_choose_initial_profile(pa_card *card);
 
 void pa_card_put(pa_card *c);

@@ -1,6 +1,6 @@
 Name:       pulseaudio
 
-%define pulseversion 12.2
+%define pulseversion 14.2
 
 Summary:    General purpose sound server
 Version:    %{pulseversion}
@@ -167,12 +167,12 @@ usermod -G pulse-access -a root || :
 %{_bindir}/parecord
 %{_bindir}/pasuspender
 %{_bindir}/pulseaudio
+%{_bindir}/pa-info
 %{_libdir}/*.so.*
 %dir %{_libdir}/pulseaudio
 %dir %{_libdir}/pulse-%{pulseversion}/
 %dir %{_libdir}/pulse-%{pulseversion}/modules/
 %{_libdir}/pulse-%{pulseversion}/modules/libalsa-util.so
-%{_libdir}/pulse-%{pulseversion}/modules/libbluez4-util.so
 %{_libdir}/pulse-%{pulseversion}/modules/libbluez5-util.so
 %{_libdir}/pulse-%{pulseversion}/modules/libcli.so
 %{_libdir}/pulse-%{pulseversion}/modules/liboss-util.so
@@ -190,8 +190,6 @@ usermod -G pulse-access -a root || :
 %{_libdir}/pulse-%{pulseversion}/modules/module-augment-properties.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-bluetooth-discover.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-bluetooth-policy.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-bluez4-device.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-bluez4-discover.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-bluez5-device.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-bluez5-discover.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-card-restore.so

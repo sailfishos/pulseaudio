@@ -190,7 +190,10 @@ bool pa_sink_input_new_data_set_sink(pa_sink_input_new_data *data, pa_sink *s, b
     if (!data->req_formats) {
         /* We're not working with the extended API */
         data->sink = s;
-        data->save_sink = save;
+        if (save) {
+            pa_xfree(data->preferred_sink);
+            data->preferred_sink = pa_xstrdup(s->name);
+	}
         data->sink_requested_by_application = requested_by_application;
     } else {
         /* Extended API: let's see if this sink supports the formats the client can provide */
@@ -199,7 +202,10 @@ bool pa_sink_input_new_data_set_sink(pa_sink_input_new_data *data, pa_sink *s, b
         if (formats && !pa_idxset_isempty(formats)) {
             /* Sink supports at least one of the requested formats */
             data->sink = s;
-            data->save_sink = save;
+	    if (save) {
+		pa_xfree(data->preferred_sink);
+		data->preferred_sink = pa_xstrdup(s->name);
+	    }
             data->sink_requested_by_application = requested_by_application;
             if (data->nego_formats)
                 pa_idxset_free(data->nego_formats, (pa_free_cb_t) pa_format_info_free);
@@ -226,7 +232,7 @@ bool pa_sink_input_new_data_set_formats(pa_sink_input_new_data *data, pa_idxset 
 
     if (data->sink) {
         /* Trigger format negotiation */
-        return pa_sink_input_new_data_set_sink(data, data->sink, data->save_sink, data->sink_requested_by_application);
+        return pa_sink_input_new_data_set_sink(data, data->sink, (data->preferred_sink != NULL), data->sink_requested_by_application);
     }
 
     return true;
@@ -249,6 +255,9 @@ void pa_sink_input_new_data_done(pa_sink_input_new_data *data) {
 
     if (data->volume_factor_sink_items)
         pa_hashmap_free(data->volume_factor_sink_items);
+
+    if (data->preferred_sink)
+        pa_xfree(data->preferred_sink);
 
     pa_proplist_free(data->proplist);
 }
@@ -357,9 +366,9 @@ int pa_sink_input_new(
         return -PA_ERR_NOTSUPPORTED;
     }
 
-    pa_return_val_if_fail(PA_SINK_IS_LINKED(pa_sink_get_state(data->sink)), -PA_ERR_BADSTATE);
+    pa_return_val_if_fail(PA_SINK_IS_LINKED(data->sink->state), -PA_ERR_BADSTATE);
     pa_return_val_if_fail(!data->sync_base || (data->sync_base->sink == data->sink
-                                               && pa_sink_input_get_state(data->sync_base) == PA_SINK_INPUT_CORKED),
+                                               && data->sync_base->state == PA_SINK_INPUT_CORKED),
                           -PA_ERR_INVALID);
 
     /* Routing is done. We have a sink and a format. */
@@ -417,12 +426,11 @@ int pa_sink_input_new(
 
     if (!(data->flags & PA_SINK_INPUT_VARIABLE_RATE) &&
         !pa_sample_spec_equal(&data->sample_spec, &data->sink->sample_spec)) {
-        /* try to change sink rate. This is done before the FIXATE hook since
+        /* try to change sink format and rate. This is done before the FIXATE hook since
            module-suspend-on-idle can resume a sink */
 
-        pa_log_info("Trying to change sample rate");
-        if (pa_sink_reconfigure(data->sink, &data->sample_spec, pa_sink_input_new_data_is_passthrough(data)) >= 0)
-            pa_log_info("Rate changed to %u Hz", data->sink->sample_spec.rate);
+        pa_log_info("Trying to change sample spec");
+        pa_sink_reconfigure(data->sink, &data->sample_spec, pa_sink_input_new_data_is_passthrough(data));
     }
 
     if (pa_sink_input_new_data_is_passthrough(data) &&
@@ -442,7 +450,7 @@ int pa_sink_input_new(
         return r;
 
     if ((data->flags & PA_SINK_INPUT_NO_CREATE_ON_SUSPEND) &&
-        pa_sink_get_state(data->sink) == PA_SINK_SUSPENDED) {
+        data->sink->state == PA_SINK_SUSPENDED) {
         pa_log_warn("Failed to create sink input: sink is suspended.");
         return -PA_ERR_BADSTATE;
     }
@@ -468,7 +476,8 @@ int pa_sink_input_new(
                           ((data->flags & PA_SINK_INPUT_NO_REMAP) ? PA_RESAMPLER_NO_REMAP : 0) |
                           (core->disable_remixing || (data->flags & PA_SINK_INPUT_NO_REMIX) ? PA_RESAMPLER_NO_REMIX : 0) |
                           (core->remixing_use_all_sink_channels ? 0 : PA_RESAMPLER_NO_FILL_SINK) |
-                          (core->disable_lfe_remixing ? PA_RESAMPLER_NO_LFE : 0)))) {
+                          (core->remixing_produce_lfe ? PA_RESAMPLER_PRODUCE_LFE : 0) |
+                          (core->remixing_consume_lfe ? PA_RESAMPLER_CONSUME_LFE : 0)))) {
                 pa_log_warn("Unsupported resampling operation.");
                 return -PA_ERR_NOTSUPPORTED;
             }
@@ -519,7 +528,7 @@ int pa_sink_input_new(
     pa_cvolume_reset(&i->real_ratio, i->sample_spec.channels);
     i->volume_writable = data->volume_writable;
     i->save_volume = data->save_volume;
-    i->save_sink = data->save_sink;
+    i->preferred_sink = pa_xstrdup(data->preferred_sink);
     i->save_muted = data->save_muted;
 
     i->muted = data->muted;
@@ -541,7 +550,6 @@ int pa_sink_input_new(
 
     i->thread_info.state = i->state;
     i->thread_info.attached = false;
-    pa_atomic_store(&i->thread_info.drained, 1);
     i->thread_info.sample_spec = i->sample_spec;
     i->thread_info.resampler = resampler;
     i->thread_info.soft_volume = i->soft_volume;
@@ -610,9 +618,6 @@ static void sink_input_set_state(pa_sink_input *i, pa_sink_input_state_t state) 
     pa_assert(i);
     pa_assert_ctl_context();
 
-    if (state == PA_SINK_INPUT_DRAINED)
-        state = PA_SINK_INPUT_RUNNING;
-
     if (i->state == state)
         return;
 
@@ -620,7 +625,7 @@ static void sink_input_set_state(pa_sink_input *i, pa_sink_input_state_t state) 
         if (i->state == PA_SINK_INPUT_CORKED && state == PA_SINK_INPUT_RUNNING && pa_sink_used_by(i->sink) == 0 &&
             !pa_sample_spec_equal(&i->sample_spec, &i->sink->sample_spec)) {
             /* We were uncorked and the sink was not playing anything -- let's try
-             * to update the sample rate to avoid resampling */
+             * to update the sample format and rate to avoid resampling */
             pa_sink_reconfigure(i->sink, &i->sample_spec, pa_sink_input_is_passthrough(i));
         }
 
@@ -724,7 +729,7 @@ void pa_sink_input_unlink(pa_sink_input *i) {
     reset_callbacks(i);
 
     if (i->sink) {
-        if (PA_SINK_IS_LINKED(pa_sink_get_state(i->sink)))
+        if (PA_SINK_IS_LINKED(i->sink->state))
             pa_sink_update_status(i->sink);
 
         i->sink = NULL;
@@ -780,6 +785,9 @@ static void sink_input_free(pa_object *o) {
 
     if (i->volume_factor_sink_items)
         pa_hashmap_free(i->volume_factor_sink_items);
+
+    if (i->preferred_sink)
+        pa_xfree(i->preferred_sink);
 
     pa_xfree(i->driver);
     pa_xfree(i);
@@ -924,7 +932,6 @@ void pa_sink_input_peek(pa_sink_input *i, size_t slength /* in sink bytes */, pa
 
             /* OK, we're corked or the implementor didn't give us any
              * data, so let's just hand out silence */
-            pa_atomic_store(&i->thread_info.drained, 1);
 
             pa_memblockq_seek(i->thread_info.render_memblockq, (int64_t) slength, PA_SEEK_RELATIVE, true);
             i->thread_info.playing_for = 0;
@@ -934,8 +941,6 @@ void pa_sink_input_peek(pa_sink_input *i, size_t slength /* in sink bytes */, pa
             }
             break;
         }
-
-        pa_atomic_store(&i->thread_info.drained, 0);
 
         pa_assert(tchunk.length > 0);
         pa_assert(tchunk.memblock);
@@ -1102,7 +1107,9 @@ void pa_sink_input_process_rewind(pa_sink_input *i, size_t nbytes /* in sink sam
         size_t max_rewrite, amount;
 
         /* Calculate how much make sense to rewrite at most */
-        max_rewrite = nbytes + lbq;
+        max_rewrite = nbytes;
+        if (nbytes > 0)
+            max_rewrite += lbq;
 
         /* Transform into local domain */
         if (i->thread_info.resampler)
@@ -1727,7 +1734,7 @@ int pa_sink_input_start_move(pa_sink_input *i) {
 
     pa_idxset_remove_by_data(i->sink->inputs, i, NULL);
 
-    if (pa_sink_input_get_state(i) == PA_SINK_INPUT_CORKED)
+    if (i->state == PA_SINK_INPUT_CORKED)
         pa_assert_se(i->sink->n_corked-- >= 1);
 
     if (pa_sink_input_is_passthrough(i))
@@ -1908,20 +1915,28 @@ int pa_sink_input_finish_move(pa_sink_input *i, pa_sink *dest, bool save) {
 
     if (!(i->flags & PA_SINK_INPUT_VARIABLE_RATE) &&
         !pa_sample_spec_equal(&i->sample_spec, &dest->sample_spec)) {
-        /* try to change dest sink rate if possible without glitches.
+        /* try to change dest sink format and rate if possible without glitches.
            module-suspend-on-idle resumes destination sink with
            SINK_INPUT_MOVE_FINISH hook */
 
-        pa_log_info("Trying to change sample rate");
-        if (pa_sink_reconfigure(dest, &i->sample_spec, pa_sink_input_is_passthrough(i)) >= 0)
-            pa_log_info("Rate changed to %u Hz", dest->sample_spec.rate);
+        pa_log_info("Trying to change sample spec");
+        pa_sink_reconfigure(dest, &i->sample_spec, pa_sink_input_is_passthrough(i));
     }
 
     if (i->moving)
         i->moving(i, dest);
 
     i->sink = dest;
-    i->save_sink = save;
+    /* save == true, means user is calling the move_to() and want to
+       save the preferred_sink */
+    if (save) {
+        pa_xfree(i->preferred_sink);
+        if (dest == dest->core->default_sink)
+            i->preferred_sink = NULL;
+        else
+            i->preferred_sink = pa_xstrdup(dest->name);
+    }
+
     pa_idxset_put(dest->inputs, pa_sink_input_ref(i), NULL);
 
     PA_HASHMAP_FOREACH(v, i->volume_factor_sink_items, state)
@@ -1929,10 +1944,10 @@ int pa_sink_input_finish_move(pa_sink_input *i, pa_sink *dest, bool save) {
 
     pa_cvolume_remap(&i->volume_factor_sink, &i->channel_map, &i->sink->channel_map);
 
-    if (pa_sink_input_get_state(i) == PA_SINK_INPUT_CORKED)
+    if (i->state == PA_SINK_INPUT_CORKED)
         i->sink->n_corked++;
 
-    pa_sink_input_update_rate(i);
+    pa_sink_input_update_resampler(i);
 
     pa_sink_update_status(dest);
 
@@ -1963,6 +1978,12 @@ void pa_sink_input_fail_move(pa_sink_input *i) {
     /* Check if someone wants this sink input? */
     if (pa_hook_fire(&i->core->hooks[PA_CORE_HOOK_SINK_INPUT_MOVE_FAIL], i) == PA_HOOK_STOP)
         return;
+
+    /* Can we move the sink input to the default sink? */
+    if (i->core->rescue_streams && pa_sink_input_may_move_to(i, i->core->default_sink)) {
+        if (pa_sink_input_finish_move(i, i->core->default_sink, false) >= 0)
+            return;
+    }
 
     if (i->moving)
         i->moving(i, NULL);
@@ -2012,10 +2033,6 @@ void pa_sink_input_set_state_within_thread(pa_sink_input *i, pa_sink_input_state
 
     if (state == i->thread_info.state)
         return;
-
-    if ((state == PA_SINK_INPUT_DRAINED || state == PA_SINK_INPUT_RUNNING) &&
-        !(i->thread_info.state == PA_SINK_INPUT_DRAINED || i->thread_info.state != PA_SINK_INPUT_RUNNING))
-        pa_atomic_store(&i->thread_info.drained, 1);
 
     corking = state == PA_SINK_INPUT_CORKED && i->thread_info.state == PA_SINK_INPUT_RUNNING;
     uncorking = i->thread_info.state == PA_SINK_INPUT_CORKED && state == PA_SINK_INPUT_RUNNING;
@@ -2122,17 +2139,6 @@ int pa_sink_input_process_msg(pa_msgobject *o, int code, void *userdata, int64_t
     }
 
     return -PA_ERR_NOTIMPLEMENTED;
-}
-
-/* Called from main thread */
-pa_sink_input_state_t pa_sink_input_get_state(pa_sink_input *i) {
-    pa_sink_input_assert_ref(i);
-    pa_assert_ctl_context();
-
-    if (i->state == PA_SINK_INPUT_RUNNING || i->state == PA_SINK_INPUT_DRAINED)
-        return pa_atomic_load(&i->thread_info.drained) ? PA_SINK_INPUT_DRAINED : PA_SINK_INPUT_RUNNING;
-
-    return i->state;
 }
 
 /* Called from IO context */
@@ -2286,8 +2292,8 @@ finish:
 
 /* Called from main context */
 /* Updates the sink input's resampler with whatever the current sink requires
- * -- useful when the underlying sink's rate might have changed */
-int pa_sink_input_update_rate(pa_sink_input *i) {
+ * -- useful when the underlying sink's sample spec might have changed */
+int pa_sink_input_update_resampler(pa_sink_input *i) {
     pa_resampler *new_resampler;
     char *memblockq_name;
 
@@ -2314,7 +2320,8 @@ int pa_sink_input_update_rate(pa_sink_input *i) {
                                      ((i->flags & PA_SINK_INPUT_NO_REMAP) ? PA_RESAMPLER_NO_REMAP : 0) |
                                      (i->core->disable_remixing || (i->flags & PA_SINK_INPUT_NO_REMIX) ? PA_RESAMPLER_NO_REMIX : 0) |
                                      (i->core->remixing_use_all_sink_channels ? 0 : PA_RESAMPLER_NO_FILL_SINK) |
-                                     (i->core->disable_lfe_remixing ? PA_RESAMPLER_NO_LFE : 0));
+                                     (i->core->remixing_produce_lfe ? PA_RESAMPLER_PRODUCE_LFE : 0) |
+                                     (i->core->remixing_consume_lfe ? PA_RESAMPLER_CONSUME_LFE : 0));
 
         if (!new_resampler) {
             pa_log_warn("Unsupported resampling operation.");
@@ -2425,4 +2432,18 @@ void pa_sink_input_set_reference_ratio(pa_sink_input *i, const pa_cvolume *ratio
     pa_log_debug("Sink input %u reference ratio changed from %s to %s.", i->index,
                  pa_cvolume_snprint_verbose(old_ratio_str, sizeof(old_ratio_str), &old_ratio, &i->channel_map, true),
                  pa_cvolume_snprint_verbose(new_ratio_str, sizeof(new_ratio_str), ratio, &i->channel_map, true));
+}
+
+/* Called from the main thread. */
+void pa_sink_input_set_preferred_sink(pa_sink_input *i, pa_sink *s) {
+    pa_assert(i);
+
+    pa_xfree(i->preferred_sink);
+    if (s) {
+        i->preferred_sink = pa_xstrdup(s->name);
+        pa_sink_input_move_to(i, s, false);
+    } else {
+        i->preferred_sink = NULL;
+        pa_sink_input_move_to(i, i->core->default_sink, false);
+    }
 }

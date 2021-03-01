@@ -61,14 +61,6 @@
 #endif
 #endif
 
-#ifdef HAVE_SCHED_H
-#include <sched.h>
-
-#if defined(__linux__) && !defined(SCHED_RESET_ON_FORK)
-#define SCHED_RESET_ON_FORK 0x40000000
-#endif
-#endif
-
 #ifdef HAVE_SYS_RESOURCE_H
 #include <sys/resource.h>
 #endif
@@ -109,15 +101,8 @@
 #include <samplerate.h>
 #endif
 
-#ifdef __APPLE__
-#include <mach/mach_init.h>
-#include <mach/thread_act.h>
-#include <mach/thread_policy.h>
-#include <sys/sysctl.h>
-#endif
-
 #ifdef HAVE_DBUS
-#include "rtkit.h"
+#include <pulsecore/rtkit.h>
 #endif
 
 #if defined(__linux__) && !defined(__ANDROID__)
@@ -202,7 +187,7 @@ static void set_nonblock(int fd, bool nonblock) {
         nv = v & ~O_NONBLOCK;
 
     if (v != nv)
-        pa_assert_se(fcntl(fd, F_SETFL, v|O_NONBLOCK) >= 0);
+        pa_assert_se(fcntl(fd, F_SETFL, nv) >= 0);
 
 #elif defined(OS_IS_WIN32)
     u_long arg;
@@ -697,158 +682,6 @@ char *pa_strlcpy(char *b, const char *s, size_t l) {
     return b;
 }
 
-#ifdef _POSIX_PRIORITY_SCHEDULING
-static int set_scheduler(int rtprio) {
-#ifdef HAVE_SCHED_H
-    struct sched_param sp;
-#ifdef HAVE_DBUS
-    int r;
-    long long rttime;
-#ifdef RLIMIT_RTTIME
-    struct rlimit rl;
-#endif
-    DBusError error;
-    DBusConnection *bus;
-
-    dbus_error_init(&error);
-#endif
-
-    pa_zero(sp);
-    sp.sched_priority = rtprio;
-
-#ifdef SCHED_RESET_ON_FORK
-    if (pthread_setschedparam(pthread_self(), SCHED_RR|SCHED_RESET_ON_FORK, &sp) == 0) {
-        pa_log_debug("SCHED_RR|SCHED_RESET_ON_FORK worked.");
-        return 0;
-    }
-#endif
-
-    if (pthread_setschedparam(pthread_self(), SCHED_RR, &sp) == 0) {
-        pa_log_debug("SCHED_RR worked.");
-        return 0;
-    }
-#endif  /* HAVE_SCHED_H */
-
-#ifdef HAVE_DBUS
-    /* Try to talk to RealtimeKit */
-
-    if (!(bus = dbus_bus_get_private(DBUS_BUS_SYSTEM, &error))) {
-        pa_log("Failed to connect to system bus: %s", error.message);
-        dbus_error_free(&error);
-        errno = -EIO;
-        return -1;
-    }
-
-    /* We need to disable exit on disconnect because otherwise
-     * dbus_shutdown will kill us. See
-     * https://bugs.freedesktop.org/show_bug.cgi?id=16924 */
-    dbus_connection_set_exit_on_disconnect(bus, FALSE);
-
-    rttime = rtkit_get_rttime_usec_max(bus);
-    if (rttime >= 0) {
-#ifdef RLIMIT_RTTIME
-        r = getrlimit(RLIMIT_RTTIME, &rl);
-
-        if (r >= 0 && (long long) rl.rlim_max > rttime) {
-            pa_log_info("Clamping rlimit-rttime to %lld for RealtimeKit", rttime);
-            rl.rlim_cur = rl.rlim_max = rttime;
-            r = setrlimit(RLIMIT_RTTIME, &rl);
-
-            if (r < 0)
-                pa_log("setrlimit() failed: %s", pa_cstrerror(errno));
-        }
-#endif
-        r = rtkit_make_realtime(bus, 0, rtprio);
-        dbus_connection_close(bus);
-        dbus_connection_unref(bus);
-
-        if (r >= 0) {
-            pa_log_debug("RealtimeKit worked.");
-            return 0;
-        }
-
-        errno = -r;
-    } else {
-        dbus_connection_close(bus);
-        dbus_connection_unref(bus);
-        errno = -rttime;
-    }
-
-#else
-    errno = 0;
-#endif
-
-    return -1;
-}
-#endif
-
-/* Make the current thread a realtime thread, and acquire the highest
- * rtprio we can get that is less or equal the specified parameter. If
- * the thread is already realtime, don't do anything. */
-int pa_make_realtime(int rtprio) {
-
-#if defined(OS_IS_DARWIN)
-    struct thread_time_constraint_policy ttcpolicy;
-    uint64_t freq = 0;
-    size_t size = sizeof(freq);
-    int ret;
-
-    ret = sysctlbyname("hw.cpufrequency", &freq, &size, NULL, 0);
-    if (ret < 0) {
-        pa_log_info("Unable to read CPU frequency, acquisition of real-time scheduling failed.");
-        return -1;
-    }
-
-    pa_log_debug("sysctl for hw.cpufrequency: %llu", freq);
-
-    /* See http://developer.apple.com/library/mac/#documentation/Darwin/Conceptual/KernelProgramming/scheduler/scheduler.html */
-    ttcpolicy.period = freq / 160;
-    ttcpolicy.computation = freq / 3300;
-    ttcpolicy.constraint = freq / 2200;
-    ttcpolicy.preemptible = 1;
-
-    ret = thread_policy_set(mach_thread_self(),
-                            THREAD_TIME_CONSTRAINT_POLICY,
-                            (thread_policy_t) &ttcpolicy,
-                            THREAD_TIME_CONSTRAINT_POLICY_COUNT);
-    if (ret) {
-        pa_log_info("Unable to set real-time thread priority (%08x).", ret);
-        return -1;
-    }
-
-    pa_log_info("Successfully acquired real-time thread priority.");
-    return 0;
-
-#elif defined(_POSIX_PRIORITY_SCHEDULING)
-    int p;
-
-    if (set_scheduler(rtprio) >= 0) {
-        pa_log_info("Successfully enabled SCHED_RR scheduling for thread, with priority %i.", rtprio);
-        return 0;
-    }
-
-    for (p = rtprio-1; p >= 1; p--)
-        if (set_scheduler(p) >= 0) {
-            pa_log_info("Successfully enabled SCHED_RR scheduling for thread, with priority %i, which is lower than the requested %i.", p, rtprio);
-            return 0;
-        }
-#elif defined(OS_IS_WIN32)
-    /* Windows only allows realtime scheduling to be set on a per process basis.
-     * Therefore, instead of making the thread realtime, just give it the highest non-realtime priority. */
-    if (SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL)) {
-        pa_log_info("Successfully enabled THREAD_PRIORITY_TIME_CRITICAL scheduling for thread.");
-        return 0;
-    }
-
-    pa_log_warn("SetThreadPriority() failed: 0x%08X", GetLastError());
-    errno = EPERM;
-#else
-    errno = ENOTSUP;
-#endif
-    pa_log_info("Failed to acquire real-time scheduling: %s", pa_cstrerror(errno));
-    return -1;
-}
-
 #ifdef HAVE_SYS_RESOURCE_H
 static int set_nice(int nice_level) {
 #ifdef HAVE_DBUS
@@ -935,7 +768,7 @@ int pa_raise_priority(int nice_level) {
 }
 
 /* Reset the priority to normal, inverting the changes made by
- * pa_raise_priority() and pa_make_realtime()*/
+ * pa_raise_priority() and pa_thread_make_realtime()*/
 void pa_reset_priority(void) {
 #ifdef HAVE_SYS_RESOURCE_H
     struct sched_param sp;
@@ -951,11 +784,15 @@ void pa_reset_priority(void) {
 #endif
 }
 
+/* Check whenever any substring in v matches the provided regex. */
 int pa_match(const char *expr, const char *v) {
 #if defined(HAVE_REGEX_H) || defined(HAVE_PCREPOSIX_H)
     int k;
     regex_t re;
     int r;
+
+    pa_assert(expr);
+    pa_assert(v);
 
     if (regcomp(&re, expr, REG_NOSUB|REG_EXTENDED) != 0) {
         errno = EINVAL;
@@ -978,6 +815,22 @@ int pa_match(const char *expr, const char *v) {
 #else
     errno = ENOSYS;
     return -1;
+#endif
+}
+
+/* Check whenever the provided regex pattern is valid. */
+bool pa_is_regex_valid(const char *expr) {
+#if defined(HAVE_REGEX_H) || defined(HAVE_PCREPOSIX_H)
+    regex_t re;
+
+    if (expr == NULL || regcomp(&re, expr, REG_NOSUB|REG_EXTENDED) != 0) {
+        return false;
+    }
+
+    regfree(&re);
+    return true;
+#else
+    return false;
 #endif
 }
 
@@ -1026,7 +879,7 @@ int pa_parse_volume(const char *v, pa_volume_t *volume) {
 
     len = strlen(v);
 
-    if (len >= 64)
+    if (len <= 0 || len >= 64)
         return -1;
 
     memcpy(str, v, len + 1);
@@ -1091,7 +944,7 @@ char *pa_split(const char *c, const char *delimiter, const char**state) {
  * as-is without the length parameter, since it is merely pointing to a point
  * within the original string. The variable state points to, should be
  * initialized to NULL before the first call. */
-const char *pa_split_in_place(const char *c, const char *delimiter, int *n, const char**state) {
+const char *pa_split_in_place(const char *c, const char *delimiter, size_t *n, const char**state) {
     const char *current = *state ? *state : c;
     size_t l;
 
@@ -1127,7 +980,7 @@ char *pa_split_spaces(const char *c, const char **state) {
 /* Similar to pa_split_spaces, except this returns a string in-place.
    Returned string is generally not NULL-terminated.
    See pa_split_in_place(). */
-const char *pa_split_spaces_in_place(const char *c, int *n, const char **state) {
+const char *pa_split_spaces_in_place(const char *c, size_t *n, const char **state) {
     const char *current = *state ? *state : c;
     size_t l;
 
@@ -1595,7 +1448,7 @@ static int check_ours(const char *p) {
         return -errno;
 
 #ifdef HAVE_GETUID
-    if (st.st_uid != getuid())
+    if (st.st_uid != getuid() && st.st_uid != 0)
         return -EACCES;
 #endif
 
@@ -1857,7 +1710,7 @@ char *pa_get_runtime_dir(void) {
         struct stat st;
         if (stat(d, &st) == 0 && st.st_uid != getuid()) {
             pa_log(_("XDG_RUNTIME_DIR (%s) is not owned by us (uid %d), but by uid %d! "
-                   "(This could e g happen if you try to connect to a non-root PulseAudio as a root user, over the native protocol. Don't do that.)"),
+                   "(This could e.g. happen if you try to connect to a non-root PulseAudio as a root user, over the native protocol. Don't do that.)"),
                    d, getuid(), st.st_uid);
             goto fail;
         }
@@ -2720,7 +2573,7 @@ int pa_close_allv(const int except_fds[]) {
     struct rlimit rl;
     int maxfd, fd;
 
-#ifdef __linux__
+#if defined(__linux__) || defined(__sun)
     int saved_errno;
     DIR *d;
 
@@ -3026,7 +2879,7 @@ bool pa_str_in_list(const char *haystack, const char *delimiters, const char *ne
 /* Checks a whitespace-separated list of words in haystack for needle */
 bool pa_str_in_list_spaces(const char *haystack, const char *needle) {
     const char *s;
-    int n;
+    size_t n;
     const char *state = NULL;
 
     if (!haystack || !needle)
@@ -3038,6 +2891,32 @@ bool pa_str_in_list_spaces(const char *haystack, const char *needle) {
     }
 
     return false;
+}
+
+char* pa_str_strip_suffix(const char *str, const char *suffix) {
+    size_t str_l, suf_l, prefix;
+    char *ret;
+
+    pa_assert(str);
+    pa_assert(suffix);
+
+    str_l = strlen(str);
+    suf_l = strlen(suffix);
+
+    if (str_l < suf_l)
+        return NULL;
+
+    prefix = str_l - suf_l;
+
+    if (!pa_streq(&str[prefix], suffix))
+        return NULL;
+
+    ret = pa_xmalloc(prefix + 1);
+
+    strncpy(ret, str, prefix);
+    ret[prefix] = '\0';
+
+    return ret;
 }
 
 char *pa_get_user_name_malloc(void) {
@@ -3260,23 +3139,39 @@ char *pa_replace(const char*s, const char*a, const char *b) {
 char *pa_escape(const char *p, const char *chars) {
     const char *s;
     const char *c;
-    pa_strbuf *buf = pa_strbuf_new();
+    char *out_string, *output;
+    int char_count = strlen(p);
 
+    /* Maximum number of characters in output string
+     * including trailing 0. */
+    char_count = 2 * char_count + 1;
+
+    /* allocate output string */
+    out_string = pa_xmalloc(char_count);
+    output = out_string;
+
+    /* write output string */
     for (s = p; *s; ++s) {
         if (*s == '\\')
-            pa_strbuf_putc(buf, '\\');
+            *output++ = '\\';
         else if (chars) {
             for (c = chars; *c; ++c) {
                 if (*s == *c) {
-                    pa_strbuf_putc(buf, '\\');
+                    *output++ = '\\';
                     break;
                 }
             }
         }
-        pa_strbuf_putc(buf, *s);
+        *output++ = *s;
     }
 
-    return pa_strbuf_to_string_free(buf);
+    *output = 0;
+
+    /* Remove trailing garbage */
+    output = pa_xstrdup(out_string);
+
+    pa_xfree(out_string);
+    return output;
 }
 
 char *pa_unescape(char *p) {
@@ -3436,15 +3331,17 @@ void pa_reset_personality(void) {
 }
 
 bool pa_run_from_build_tree(void) {
-    char *rp;
     static bool b = false;
 
+#ifdef HAVE_RUNNING_FROM_BUILD_TREE
+    char *rp;
     PA_ONCE_BEGIN {
         if ((rp = pa_readlink("/proc/self/exe"))) {
             b = pa_startswith(rp, PA_BUILDDIR);
             pa_xfree(rp);
         }
     } PA_ONCE_END;
+#endif
 
     return b;
 }
@@ -3667,11 +3564,7 @@ bool pa_running_in_vm(void) {
     /* Both CPUID and DMI are x86 specific interfaces... */
 
 #ifdef HAVE_CPUID_H
-    uint32_t eax;
-    union {
-        uint32_t sig32[3];
-        char text[13];
-    } sig;
+    unsigned int eax, ebx, ecx, edx;
 #endif
 
 #ifdef __linux__
@@ -3708,24 +3601,14 @@ bool pa_running_in_vm(void) {
 
 #ifdef HAVE_CPUID_H
 
-    /* Hypervisors provide their signature on the 0x40000000 cpuid leaf.
-     * http://lwn.net/Articles/301888/
-     *
-     * XXX: Why are we checking a list of signatures instead of the
-     * "hypervisor present bit"? According to the LWN article, the "hypervisor
-     * present bit" would be available on bit 31 of ECX on leaf 0x1, and that
-     * bit would tell us directly whether we're in a virtual machine or not. */
-    pa_zero(sig);
-    if (__get_cpuid(0x40000000, &eax, &sig.sig32[0], &sig.sig32[1], &sig.sig32[2]) == 0)
+    /* Hypervisors provide presence on 0x1 cpuid leaf.
+     * http://lwn.net/Articles/301888/ */
+    if (__get_cpuid(1, &eax, &ebx, &ecx, &edx) == 0)
         return false;
 
-    if (pa_streq(sig.text, "XenVMMXenVMM") ||
-        pa_streq(sig.text, "KVMKVMKVM") ||
-        /* http://kb.vmware.com/selfservice/microsites/search.do?language=en_US&cmd=displayKC&externalId=1009458 */
-        pa_streq(sig.text, "VMwareVMware") ||
-        /* http://msdn.microsoft.com/en-us/library/bb969719.aspx */
-        pa_streq(sig.text, "Microsoft Hv"))
+    if (ecx & 0x80000000)
         return true;
+
 #endif /* HAVE_CPUID_H */
 
 #endif /* defined(__i386__) || defined(__x86_64__) */

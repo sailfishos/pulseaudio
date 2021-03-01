@@ -36,6 +36,7 @@ PA_MODULE_VERSION(PACKAGE_VERSION);
 PA_MODULE_LOAD_ONCE(true);
 PA_MODULE_USAGE(
     "headset=ofono|native|auto"
+    "autodetect_mtu=<boolean>"
 );
 
 static const char* const valid_modargs[] = {
@@ -164,11 +165,11 @@ void pa__done(pa_module *m) {
     if (u->device_connection_changed_slot)
         pa_hook_slot_free(u->device_connection_changed_slot);
 
-    if (u->discovery)
-        pa_bluetooth_discovery_unref(u->discovery);
-
     if (u->loaded_device_paths)
         pa_hashmap_free(u->loaded_device_paths);
+
+    if (u->discovery)
+        pa_bluetooth_discovery_unref(u->discovery);
 
     pa_xfree(u);
 }

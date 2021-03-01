@@ -106,11 +106,15 @@ struct pa_source_output {
 
     bool muted:1;
 
-    /* if true then the source we are connected to and/or the volume
-     * set is worth remembering, i.e. was explicitly chosen by the
-     * user and not automatically. module-stream-restore looks for
-     * this.*/
-    bool save_source:1, save_volume:1, save_muted:1;
+    /* if true then the volume and the mute state of this source-output
+     * are worth remembering, module-stream-restore looks for this. */
+    bool save_volume:1, save_muted:1;
+
+    /* if users move the source-output to a source, and the source is not
+     * default_source, the source->name will be saved in preferred_source. And
+     * later if source-output is moved to other sources for some reason, it
+     * still can be restored to the preferred_source at an appropriate time */
+    char *preferred_source;
 
     pa_resample_method_t requested_resample_method, actual_resample_method;
 
@@ -150,8 +154,9 @@ struct pa_source_output {
     void (*detach) (pa_source_output *o);           /* may be NULL */
 
     /* If non-NULL called whenever the source this output is attached
-     * to suspends or resumes. Called from main context */
-    void (*suspend) (pa_source_output *o, bool b);   /* may be NULL */
+     * to suspends or resumes or if the suspend cause changes.
+     * Called from main context */
+    void (*suspend) (pa_source_output *o, pa_source_state_t old_state, pa_suspend_cause_t old_suspend_cause);   /* may be NULL */
 
     /* If non-NULL called whenever the source this output is attached
      * to suspends or resumes. Called from IO context */
@@ -276,7 +281,8 @@ typedef struct pa_source_output_new_data {
 
     bool volume_writable:1;
 
-    bool save_source:1, save_volume:1, save_muted:1;
+    bool save_volume:1, save_muted:1;
+    char *preferred_source;
 } pa_source_output_new_data;
 
 pa_source_output_new_data* pa_source_output_new_data_init(pa_source_output_new_data *data);
@@ -307,7 +313,7 @@ pa_usec_t pa_source_output_set_requested_latency(pa_source_output *o, pa_usec_t 
 void pa_source_output_cork(pa_source_output *o, bool b);
 
 int pa_source_output_set_rate(pa_source_output *o, uint32_t rate);
-int pa_source_output_update_rate(pa_source_output *o);
+int pa_source_output_update_resampler(pa_source_output *o);
 
 size_t pa_source_output_get_max_rewind(pa_source_output *o);
 
@@ -343,8 +349,6 @@ int pa_source_output_move_to(pa_source_output *o, pa_source *dest, bool save);
 int pa_source_output_start_move(pa_source_output *o);
 int pa_source_output_finish_move(pa_source_output *o, pa_source *dest, bool save);
 void pa_source_output_fail_move(pa_source_output *o);
-
-#define pa_source_output_get_state(o) ((o)->state)
 
 pa_usec_t pa_source_output_get_requested_latency(pa_source_output *o);
 
@@ -397,6 +401,8 @@ void pa_source_output_set_volume_direct(pa_source_output *o, const pa_cvolume *v
  * directly set the source output reference ratio. This function simply sets
  * o->reference_ratio and logs a message if the value changes. */
 void pa_source_output_set_reference_ratio(pa_source_output *o, const pa_cvolume *ratio);
+
+void pa_source_output_set_preferred_source(pa_source_output *o, pa_source *s);
 
 #define pa_source_output_assert_io_context(s) \
     pa_assert(pa_thread_mq_get() || !PA_SOURCE_OUTPUT_IS_LINKED((s)->state))

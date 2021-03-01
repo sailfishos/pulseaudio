@@ -85,7 +85,7 @@ void pa_mainloop_free(pa_mainloop* m);
 
 /** Prepare for a single iteration of the main loop. Returns a negative value
 on error or exit request. timeout specifies a maximum timeout for the subsequent
-poll, or -1 for blocking behaviour. .*/
+poll, or -1 for blocking behaviour. The timeout is specified in microseconds. */
 int pa_mainloop_prepare(pa_mainloop *m, int timeout);
 
 /** Execute the previously prepared poll. Returns a negative value on error.*/
@@ -96,7 +96,7 @@ a negative value on error. On success returns the number of source dispatched. *
 int pa_mainloop_dispatch(pa_mainloop *m);
 
 /** Return the return value as specified with the main loop's quit() routine. */
-int pa_mainloop_get_retval(pa_mainloop *m);
+int pa_mainloop_get_retval(const pa_mainloop *m);
 
 /** Run a single iteration of the main loop. This is a convenience function
 for pa_mainloop_prepare(), pa_mainloop_poll() and pa_mainloop_dispatch().

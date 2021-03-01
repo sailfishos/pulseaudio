@@ -81,7 +81,6 @@ char *pa_strlcpy(char *b, const char *s, size_t l);
 
 char *pa_parent_dir(const char *fn);
 
-int pa_make_realtime(int rtprio);
 int pa_raise_priority(int nice_level);
 void pa_reset_priority(void);
 
@@ -110,9 +109,9 @@ static inline const char *pa_strna(const char *x) {
 }
 
 char *pa_split(const char *c, const char *delimiters, const char **state);
-const char *pa_split_in_place(const char *c, const char *delimiters, int *n, const char **state);
+const char *pa_split_in_place(const char *c, const char *delimiters, size_t *n, const char **state);
 char *pa_split_spaces(const char *c, const char **state);
-const char *pa_split_spaces_in_place(const char *c, int *n, const char **state);
+const char *pa_split_spaces_in_place(const char *c, size_t *n, const char **state);
 
 char *pa_strip_nl(char *s);
 char *pa_strip(char *s);
@@ -159,6 +158,7 @@ size_t pa_vsnprintf(char *str, size_t size, const char *format, va_list ap);
 char *pa_truncate_utf8(char *c, size_t l);
 
 int pa_match(const char *expr, const char *v);
+bool pa_is_regex_valid(const char *expr);
 
 char *pa_getcwd(void);
 char *pa_make_path_absolute(const char *p);
@@ -231,6 +231,8 @@ static inline bool pa_safe_streq(const char *a, const char *b) {
 
 bool pa_str_in_list_spaces(const char *needle, const char *haystack);
 bool pa_str_in_list(const char *haystack, const char *delimiters, const char *needle);
+
+char* pa_str_strip_suffix(const char *str, const char *suffix);
 
 char *pa_get_host_name_malloc(void);
 char *pa_get_user_name_malloc(void);

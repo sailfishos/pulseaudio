@@ -167,10 +167,16 @@ static void stat_callback(pa_context *c, const pa_stat_info *i, void *userdata) 
     }
 
     pa_bytes_snprint(s, sizeof(s), i->memblock_total_size);
-    printf(_("Currently in use: %u blocks containing %s bytes total.\n"), i->memblock_total, s);
+    printf(ngettext("Currently in use: %u block containing %s bytes total.\n",
+                    "Currently in use: %u blocks containing %s bytes total.\n",
+                    i->memblock_total),
+           i->memblock_total, s);
 
     pa_bytes_snprint(s, sizeof(s), i->memblock_allocated_size);
-    printf(_("Allocated during whole lifetime: %u blocks containing %s bytes total.\n"), i->memblock_allocated, s);
+    printf(ngettext("Allocated during whole lifetime: %u block containing %s bytes total.\n",
+                    "Allocated during whole lifetime: %u blocks containing %s bytes total.\n",
+                    i->memblock_allocated),
+           i->memblock_allocated, s);
 
     pa_bytes_snprint(s, sizeof(s), i->scache_size);
     printf(_("Sample cache size: %s\n"), s);
@@ -226,12 +232,45 @@ static void get_server_info_callback(pa_context *c, const pa_server_info *i, voi
     complete_action();
 }
 
-static const char* get_available_str_ynonly(int available) {
+static const char* get_available_str(int available) {
     switch (available) {
-        case PA_PORT_AVAILABLE_YES: return ", available";
-        case PA_PORT_AVAILABLE_NO: return ", not available";
+        case PA_PORT_AVAILABLE_UNKNOWN: return _("availability unknown");
+        case PA_PORT_AVAILABLE_YES: return _("available");
+        case PA_PORT_AVAILABLE_NO: return _("not available");
     }
-    return "";
+
+    pa_assert_not_reached();
+}
+
+static const char* get_device_port_type(unsigned int type) {
+    static char buf[32];
+    switch (type) {
+    case PA_DEVICE_PORT_TYPE_UNKNOWN: return _("Unknown");
+    case PA_DEVICE_PORT_TYPE_AUX: return _("Aux");
+    case PA_DEVICE_PORT_TYPE_SPEAKER: return _("Speaker");
+    case PA_DEVICE_PORT_TYPE_HEADPHONES: return _("Headphones");
+    case PA_DEVICE_PORT_TYPE_LINE: return _("Line");
+    case PA_DEVICE_PORT_TYPE_MIC: return _("Mic");
+    case PA_DEVICE_PORT_TYPE_HEADSET: return _("Headset");
+    case PA_DEVICE_PORT_TYPE_HANDSET: return _("Handset");
+    case PA_DEVICE_PORT_TYPE_EARPIECE: return _("Earpiece");
+    case PA_DEVICE_PORT_TYPE_SPDIF: return _("SPDIF");
+    case PA_DEVICE_PORT_TYPE_HDMI: return _("HDMI");
+    case PA_DEVICE_PORT_TYPE_TV: return _("TV");
+    case PA_DEVICE_PORT_TYPE_RADIO: return _("Radio");
+    case PA_DEVICE_PORT_TYPE_VIDEO: return _("Video");
+    case PA_DEVICE_PORT_TYPE_USB: return _("USB");
+    case PA_DEVICE_PORT_TYPE_BLUETOOTH: return _("Bluetooth");
+    case PA_DEVICE_PORT_TYPE_PORTABLE: return _("Portable");
+    case PA_DEVICE_PORT_TYPE_HANDSFREE: return _("Handsfree");
+    case PA_DEVICE_PORT_TYPE_CAR: return _("Car");
+    case PA_DEVICE_PORT_TYPE_HIFI: return _("HiFi");
+    case PA_DEVICE_PORT_TYPE_PHONE: return _("Phone");
+    case PA_DEVICE_PORT_TYPE_NETWORK: return _("Network");
+    case PA_DEVICE_PORT_TYPE_ANALOG: return _("Analog");
+    }
+    snprintf(buf, sizeof(buf), "%s-%u", _("Unknown"), type);
+    return buf;
 }
 
 static void get_sink_info_callback(pa_context *c, const pa_sink_info *i, int is_last, void *userdata) {
@@ -324,8 +363,10 @@ static void get_sink_info_callback(pa_context *c, const pa_sink_info *i, int is_
 
         printf(_("\tPorts:\n"));
         for (p = i->ports; *p; p++)
-            printf("\t\t%s: %s (priority: %u%s)\n", (*p)->name, (*p)->description,
-                    (*p)->priority, get_available_str_ynonly((*p)->available));
+            printf(_("\t\t%s: %s (type: %s, priority: %u%s%s, %s)\n"),
+                    (*p)->name, (*p)->description, get_device_port_type((*p)->type),
+                    (*p)->priority, (*p)->availability_group ? _(", availability group: ") : "",
+                    (*p)->availability_group ?: "", get_available_str((*p)->available));
     }
 
     if (i->active_port)
@@ -430,8 +471,10 @@ static void get_source_info_callback(pa_context *c, const pa_source_info *i, int
 
         printf(_("\tPorts:\n"));
         for (p = i->ports; *p; p++)
-            printf("\t\t%s: %s (priority: %u%s)\n", (*p)->name, (*p)->description,
-                    (*p)->priority, get_available_str_ynonly((*p)->available));
+            printf(_("\t\t%s: %s (type: %s, priority: %u%s%s, %s)\n"),
+                    (*p)->name, (*p)->description, get_device_port_type((*p)->type),
+                    (*p)->priority, (*p)->availability_group ? _(", availability group: ") : "",
+                    (*p)->availability_group ?: "", get_available_str((*p)->available));
     }
 
     if (i->active_port)
@@ -592,9 +635,10 @@ static void get_card_info_callback(pa_context *c, const pa_card_info *i, int is_
         printf(_("\tPorts:\n"));
         for (p = i->ports; *p; p++) {
             pa_card_profile_info **pr = (*p)->profiles;
-            printf("\t\t%s: %s (priority: %u, latency offset: %" PRId64 " usec%s)\n", (*p)->name,
-                (*p)->description, (*p)->priority, (*p)->latency_offset,
-                get_available_str_ynonly((*p)->available));
+            printf(_("\t\t%s: %s (type: %s, priority: %u, latency offset: %" PRId64 " usec%s%s, %s)\n"), (*p)->name,
+                (*p)->description, get_device_port_type((*p)->type), (*p)->priority, (*p)->latency_offset,
+                (*p)->availability_group ? _(", availability group: ") : "", (*p)->availability_group ?: "",
+                get_available_str((*p)->available));
 
             if (!pa_proplist_isempty((*p)->proplist)) {
                 printf(_("\t\t\tProperties:\n\t\t\t\t%s\n"), pl = pa_proplist_to_string_sep((*p)->proplist, "\n\t\t\t\t"));
@@ -881,8 +925,10 @@ static void fill_volume(pa_cvolume *cv, unsigned supported) {
     if (volume.channels == 1) {
         pa_cvolume_set(&volume, supported, volume.values[0]);
     } else if (volume.channels != supported) {
-        pa_log(_("Failed to set volume: You tried to set volumes for %d channels, whereas channel/s supported = %d\n"),
-            volume.channels, supported);
+        pa_log(ngettext("Failed to set volume: You tried to set volumes for %d channel, whereas channel(s) supported = %d\n",
+                        "Failed to set volume: You tried to set volumes for %d channels, whereas channel(s) supported = %d\n",
+                        volume.channels),
+               volume.channels, supported);
         quit(1);
         return;
     }
@@ -1037,7 +1083,7 @@ static void source_output_toggle_mute_callback(pa_context *c, const pa_source_ou
 #define MAX_FORMATS 256
 
 static void set_sink_formats(pa_context *c, uint32_t sink, const char *str) {
-    pa_format_info *f_arr[MAX_FORMATS];
+    pa_format_info *f_arr[MAX_FORMATS] = { 0, };
     char *format = NULL;
     const char *state = NULL;
     int i = 0;
@@ -1064,13 +1110,13 @@ static void set_sink_formats(pa_context *c, uint32_t sink, const char *str) {
 done:
     if (format)
         pa_xfree(format);
-    while(i--)
+    while (f_arr[i] && i--)
         pa_format_info_free(f_arr[i]);
 
     return;
 
 error:
-    while(i--)
+    while (f_arr[i] && i--)
         pa_format_info_free(f_arr[i]);
     quit(1);
     goto done;

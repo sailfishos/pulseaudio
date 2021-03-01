@@ -164,7 +164,7 @@ struct pa_core {
     pa_idxset *clients, *cards, *sinks, *sources, *sink_inputs, *source_outputs, *modules, *scache;
 
     /* Some hashmaps for all sorts of entities */
-    pa_hashmap *namereg, *shared;
+    pa_hashmap *namereg, *shared, *message_handlers;
 
     /* The default sink/source as configured by the user. If the user hasn't
      * explicitly configured anything, these are set to NULL. These are strings
@@ -213,6 +213,7 @@ struct pa_core {
     int exit_idle_time, scache_idle_time;
 
     bool flat_volumes:1;
+    bool rescue_streams:1;
     bool disallow_module_loading:1;
     bool disallow_exit:1;
     bool running_as_daemon:1;
@@ -220,7 +221,8 @@ struct pa_core {
     bool avoid_resampling:1;
     bool disable_remixing:1;
     bool remixing_use_all_sink_channels:1;
-    bool disable_lfe_remixing:1;
+    bool remixing_produce_lfe:1;
+    bool remixing_consume_lfe:1;
     bool deferred_volume:1;
 
     pa_resample_method_t resample_method;
@@ -258,6 +260,8 @@ void pa_core_set_configured_default_source(pa_core *core, const char *source);
 void pa_core_update_default_sink(pa_core *core);
 void pa_core_update_default_source(pa_core *core);
 
+void pa_core_set_exit_idle_time(pa_core *core, int time);
+
 /* Check whether no one is connected to this core */
 void pa_core_check_idle(pa_core *c);
 
@@ -275,5 +279,9 @@ static const size_t PA_SUSPEND_CAUSE_TO_STRING_BUF_SIZE =
 /* Converts the given suspend cause to a string. The string is written to the
  * provided buffer. The same buffer is the return value of this function. */
 const char *pa_suspend_cause_to_string(pa_suspend_cause_t cause, char buf[PA_SUSPEND_CAUSE_TO_STRING_BUF_SIZE]);
+
+void pa_core_move_streams_to_newly_available_preferred_sink(pa_core *c, pa_sink *s);
+
+void pa_core_move_streams_to_newly_available_preferred_source(pa_core *c, pa_source *s);
 
 #endif

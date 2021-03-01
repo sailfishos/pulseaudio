@@ -98,6 +98,15 @@
 #include "ltdl-bind-now.h"
 #include "server-lookup.h"
 
+#ifdef DISABLE_LIBTOOL_PRELOAD
+/* FIXME: work around a libtool bug by making sure we have 2 elements. Bug has
+ * been reported: https://debbugs.gnu.org/cgi/bugreport.cgi?bug=29576 */
+const lt_dlsymlist lt_preloaded_symbols[] = {
+    { "@PROGRAM@", NULL },
+    { NULL, NULL }
+};
+#endif
+
 #ifdef HAVE_LIBWRAP
 /* Only one instance of these variables */
 int allow_severity = LOG_INFO;
@@ -907,7 +916,6 @@ int main(int argc, char *argv[]) {
     pa_set_env_and_record("PULSE_SYSTEM", conf->system_instance ? "1" : "0");
 
     pa_log_info("This is PulseAudio %s", PACKAGE_VERSION);
-    pa_log_debug("Compilation host: %s", CANONICAL_HOST);
     pa_log_debug("Compilation CFLAGS: %s", PA_CFLAGS);
 
 #ifdef HAVE_LIBSAMPLERATE
@@ -931,6 +939,12 @@ int main(int argc, char *argv[]) {
     pa_log_debug("Running in valgrind mode: %s", pa_yes_no(pa_in_valgrind()));
 
     pa_log_debug("Running in VM: %s", pa_yes_no(pa_running_in_vm()));
+
+#ifdef HAVE_RUNNING_FROM_BUILD_TREE
+    pa_log_debug("Running from build tree: %s", pa_yes_no(pa_run_from_build_tree()));
+#else
+    pa_log_debug("Running from build tree: no");
+#endif
 
 #ifdef __OPTIMIZE__
     pa_log_debug("Optimized build: yes");
@@ -1041,14 +1055,20 @@ int main(int argc, char *argv[]) {
     c->avoid_resampling = conf->avoid_resampling;
     c->disable_remixing = conf->disable_remixing;
     c->remixing_use_all_sink_channels = conf->remixing_use_all_sink_channels;
-    c->disable_lfe_remixing = conf->disable_lfe_remixing;
+    c->remixing_produce_lfe = conf->remixing_produce_lfe;
+    c->remixing_consume_lfe = conf->remixing_consume_lfe;
     c->deferred_volume = conf->deferred_volume;
     c->running_as_daemon = conf->daemonize;
     c->disallow_exit = conf->disallow_exit;
     c->flat_volumes = conf->flat_volumes;
+    c->rescue_streams = conf->rescue_streams;
 #ifdef HAVE_DBUS
     c->server_type = conf->local_server_type;
 #endif
+
+    pa_core_check_idle(c);
+
+    c->state = PA_CORE_RUNNING;
 
     pa_cpu_init(&c->cpu_info);
 
@@ -1073,25 +1093,31 @@ int main(int argc, char *argv[]) {
 #ifdef HAVE_DBUS
     pa_assert_se(dbus_threads_init_default());
 
-    if (start_server) {
+    if (start_server)
 #endif
+    {
+        const char *command_source = NULL;
+
         if (conf->load_default_script_file) {
             FILE *f;
 
             if ((f = pa_daemon_conf_open_default_script_file(conf))) {
                 r = pa_cli_command_execute_file_stream(c, f, buf, &conf->fail);
                 fclose(f);
+                command_source = pa_daemon_conf_get_default_script_file(conf);
             }
         }
 
-        if (r >= 0)
+        if (r >= 0) {
             r = pa_cli_command_execute(c, conf->script_commands, buf, &conf->fail);
+            command_source = _("command line arguments");
+        }
 
         pa_log_error("%s", s = pa_strbuf_to_string_free(buf));
         pa_xfree(s);
 
         if (r < 0 && conf->fail) {
-            pa_log(_("Failed to initialize daemon."));
+            pa_log(_("Failed to initialize daemon due to errors while executing startup commands. Source of commands: %s"), command_source);
             goto finish;
         }
 
@@ -1106,8 +1132,8 @@ int main(int argc, char *argv[]) {
          * think there's no way to contact the server, but receiving certain
          * signals could still cause modules to load. */
         conf->disallow_module_loading = true;
-    }
 #endif
+    }
 
     /* We completed the initial module loading, so let's disable it
      * from now on, if requested */

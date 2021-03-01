@@ -38,6 +38,7 @@
 #include <pulsecore/sample-util.h>
 #include <pulsecore/ltdl-helper.h>
 #include <pulsecore/mix.h>
+#include <pulsecore/rtpoll.h>
 
 PA_MODULE_AUTHOR("Pierre-Louis Bossart");
 PA_MODULE_DESCRIPTION("Virtual source");
@@ -77,6 +78,7 @@ struct userdata {
     pa_sink *sink;
     pa_usec_t block_usec;
     pa_memblockq *sink_memblockq;
+    pa_rtpoll *rtpoll;
 
 };
 
@@ -150,18 +152,6 @@ static void sink_update_requested_latency_cb(pa_sink *s) {
 }
 
 /* Called from I/O thread context */
-static void sink_request_rewind_cb(pa_sink *s) {
-    struct userdata *u;
-
-    pa_sink_assert_ref(s);
-    pa_assert_se(u = s->userdata);
-
-    /* Do nothing */
-    pa_sink_process_rewind(u->sink, 0);
-
-}
-
-/* Called from I/O thread context */
 static int source_process_msg_cb(pa_msgobject *o, int code, void *data, int64_t offset, pa_memchunk *chunk) {
     struct userdata *u = PA_SOURCE(o)->userdata;
 
@@ -201,7 +191,7 @@ static int source_set_state_in_main_thread_cb(pa_source *s, pa_source_state_t st
     pa_assert_se(u = s->userdata);
 
     if (!PA_SOURCE_IS_LINKED(state) ||
-        !PA_SOURCE_OUTPUT_IS_LINKED(pa_source_output_get_state(u->source_output)))
+        !PA_SOURCE_OUTPUT_IS_LINKED(u->source_output->state))
         return 0;
 
     pa_source_output_cork(u->source_output, state == PA_SOURCE_SUSPENDED);
@@ -232,8 +222,8 @@ static void source_set_volume_cb(pa_source *s) {
     pa_source_assert_ref(s);
     pa_assert_se(u = s->userdata);
 
-    if (!PA_SOURCE_IS_LINKED(pa_source_get_state(s)) ||
-        !PA_SOURCE_OUTPUT_IS_LINKED(pa_source_output_get_state(u->source_output)))
+    if (!PA_SOURCE_IS_LINKED(s->state) ||
+        !PA_SOURCE_OUTPUT_IS_LINKED(u->source_output->state))
         return;
 
     pa_source_output_set_volume(u->source_output, &s->real_volume, s->save_volume, true);
@@ -246,8 +236,8 @@ static void source_set_mute_cb(pa_source *s) {
     pa_source_assert_ref(s);
     pa_assert_se(u = s->userdata);
 
-    if (!PA_SOURCE_IS_LINKED(pa_source_get_state(s)) ||
-        !PA_SOURCE_OUTPUT_IS_LINKED(pa_source_output_get_state(u->source_output)))
+    if (!PA_SOURCE_IS_LINKED(s->state) ||
+        !PA_SOURCE_OUTPUT_IS_LINKED(u->source_output->state))
         return;
 
     pa_source_output_set_mute(u->source_output, s->muted, s->save_muted);
@@ -264,7 +254,7 @@ static void source_output_push_cb(pa_source_output *o, const pa_memchunk *chunk)
     if (!PA_SOURCE_IS_LINKED(u->source->thread_info.state))
         return;
 
-    if (!PA_SOURCE_OUTPUT_IS_LINKED(pa_source_output_get_state(u->source_output))) {
+    if (!PA_SOURCE_OUTPUT_IS_LINKED(u->source_output->thread_info.state)) {
         pa_log("push when no link?");
         return;
     }
@@ -273,7 +263,7 @@ static void source_output_push_cb(pa_source_output *o, const pa_memchunk *chunk)
 
     /* if uplink sink exists, pull data from there; simplify by using
        same length as chunk provided by source */
-    if (u->sink && (pa_sink_get_state(u->sink) == PA_SINK_RUNNING)) {
+    if (u->sink && (u->sink->thread_info.state == PA_SINK_RUNNING)) {
         pa_memchunk tchunk;
         size_t nbytes = chunk->length;
         pa_mix_info streams[2];
@@ -456,6 +446,8 @@ static void source_output_kill_cb(pa_source_output *o) {
 /* Called from main thread */
 static void source_output_moving_cb(pa_source_output *o, pa_source *dest) {
     struct userdata *u;
+    uint32_t idx;
+    pa_source_output *output;
 
     pa_source_output_assert_ref(o);
     pa_assert_ctl_context();
@@ -466,6 +458,12 @@ static void source_output_moving_cb(pa_source_output *o, pa_source *dest) {
         pa_source_update_flags(u->source, PA_SOURCE_LATENCY|PA_SOURCE_DYNAMIC_LATENCY, dest->flags);
     } else
         pa_source_set_asyncmsgq(u->source, NULL);
+
+    /* Propagate asyncmsq change to attached virtual sources */
+    PA_IDXSET_FOREACH(output, u->source->outputs, idx) {
+        if (output->destination_source && output->moving)
+            output->moving(output, u->source);
+    }
 
     if (u->auto_desc && dest) {
         const char *z;
@@ -542,6 +540,13 @@ int pa__init(pa_module*m) {
         goto fail;
     }
     u->channels = ss.channels;
+
+    /* The rtpoll created here is never run. It is only necessary to avoid crashes
+     * when module-virtual-source is used together with module-loopback or
+     * module-combine-sink. Both modules base their asyncmsq on the rtpoll provided
+     * by the sink. module-loopback and combine-sink only work because they
+     * call pa_asyncmsq_process_one() themselves. */
+    u->rtpoll = pa_rtpoll_new();
 
     /* Create source */
     pa_source_new_data_init(&source_data);
@@ -666,16 +671,16 @@ int pa__init(pa_module*m) {
 
         u->sink->parent.process_msg = sink_process_msg_cb;
         u->sink->update_requested_latency = sink_update_requested_latency_cb;
-        u->sink->request_rewind = sink_request_rewind_cb;
         u->sink->set_state_in_main_thread = sink_set_state_in_main_thread_cb;
         u->sink->userdata = u;
 
         pa_sink_set_asyncmsgq(u->sink, master->asyncmsgq);
+        pa_sink_set_rtpoll(u->sink, u->rtpoll);
 
         /* FIXME: no idea what I am doing here */
         u->block_usec = BLOCK_USEC;
         nbytes = pa_usec_to_bytes(u->block_usec, &u->sink->sample_spec);
-        pa_sink_set_max_rewind(u->sink, nbytes);
+        pa_sink_set_max_rewind(u->sink, 0);
         pa_sink_set_max_request(u->sink, nbytes);
 
         pa_sink_put(u->sink);
@@ -732,14 +737,19 @@ void pa__done(pa_module*m) {
     if (u->source)
         pa_source_unref(u->source);
 
-    if (u->sink)
+    if (u->sink) {
+        pa_sink_unlink(u->sink);
         pa_sink_unref(u->sink);
+    }
 
     if (u->memblockq)
         pa_memblockq_free(u->memblockq);
 
     if (u->sink_memblockq)
         pa_memblockq_free(u->sink_memblockq);
+
+    if (u->rtpoll)
+        pa_rtpoll_free(u->rtpoll);
 
     pa_xfree(u);
 }

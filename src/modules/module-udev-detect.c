@@ -46,11 +46,13 @@ PA_MODULE_USAGE(
         "fixed_latency_range=<disable latency range changes on underrun?> "
         "ignore_dB=<ignore dB information from the device?> "
         "deferred_volume=<syncronize sw and hw volume changes in IO-thread?> "
-        "use_ucm=<use ALSA UCM for card configuration?>");
+        "use_ucm=<use ALSA UCM for card configuration?> "
+        "avoid_resampling=<use stream original sample rate if possible?>");
 
 struct device {
     char *path;
     bool need_verify;
+    bool ignore;
     char *card_name;
     char *args;
     uint32_t module;
@@ -67,6 +69,7 @@ struct userdata {
     bool ignore_dB:1;
     bool deferred_volume:1;
     bool use_ucm:1;
+    bool avoid_resampling:1;
 
     uint32_t tsched_buffer_size;
 
@@ -85,6 +88,7 @@ static const char* const valid_modargs[] = {
     "ignore_dB",
     "deferred_volume",
     "use_ucm",
+    "avoid_resampling",
     NULL
 };
 
@@ -283,6 +287,9 @@ static void verify_access(struct userdata *u, struct device *d) {
     pa_assert(u);
     pa_assert(d);
 
+    if (d->ignore)
+        return;
+
     cd = pa_sprintf_malloc("/dev/snd/controlC%s", path_get_card_id(d->path));
     accessible = access(cd, R_OK|W_OK) >= 0;
     pa_log_debug("%s is accessible: %s", cd, pa_yes_no(accessible));
@@ -329,14 +336,20 @@ static void verify_access(struct userdata *u, struct device *d) {
                  * failure or a "fatal" failure. */
 
                 if (pa_ratelimit_test(&d->ratelimit, PA_LOG_DEBUG)) {
+                    int err;
+
                     pa_log_debug("Loading module-alsa-card with arguments '%s'", d->args);
-                    pa_module_load(&m, u->core, "module-alsa-card", d->args);
+                    err = pa_module_load(&m, u->core, "module-alsa-card", d->args);
 
                     if (m) {
                         d->module = m->index;
                         pa_log_info("Card %s (%s) module loaded.", d->path, d->card_name);
-                    } else
+                    } else if (err == -PA_ERR_NOENTITY) {
+                        pa_log_info("Card %s (%s) module skipped.", d->path, d->card_name);
+                        d->ignore = true;
+                    } else {
                         pa_log_info("Card %s (%s) failed to load module.", d->path, d->card_name);
+                    }
                 } else
                     pa_log_warn("Tried to configure %s (%s) more often than %u times in %llus",
                                 d->path,
@@ -401,6 +414,7 @@ static void card_changed(struct userdata *u, struct udev_device *dev) {
                      "ignore_dB=%s "
                      "deferred_volume=%s "
                      "use_ucm=%s "
+                     "avoid_resampling=%s "
                      "card_properties=\"module-udev-detect.discovered=1\"",
                      path_get_card_id(path),
                      n,
@@ -409,7 +423,8 @@ static void card_changed(struct userdata *u, struct udev_device *dev) {
                      pa_yes_no(u->fixed_latency_range),
                      pa_yes_no(u->ignore_dB),
                      pa_yes_no(u->deferred_volume),
-                     pa_yes_no(u->use_ucm));
+                     pa_yes_no(u->use_ucm),
+                     pa_yes_no(u->avoid_resampling));
     pa_xfree(n);
 
     if (u->tsched_buffer_size_valid)
@@ -682,6 +697,7 @@ int pa__init(pa_module *m) {
     int fd;
     bool use_tsched = true, fixed_latency_range = false, ignore_dB = false, deferred_volume = m->core->deferred_volume;
     bool use_ucm = true;
+    bool avoid_resampling;
 
     pa_assert(m);
 
@@ -733,6 +749,13 @@ int pa__init(pa_module *m) {
         goto fail;
     }
     u->use_ucm = use_ucm;
+
+    avoid_resampling = m->core->avoid_resampling;
+    if (pa_modargs_get_value_boolean(ma, "avoid_resampling", &avoid_resampling) < 0) {
+        pa_log("Failed to parse avoid_resampling= argument.");
+        goto fail;
+    }
+    u->avoid_resampling = avoid_resampling;
 
     if (!(u->udev = udev_new())) {
         pa_log("Failed to initialize udev library.");

@@ -45,6 +45,8 @@ PA_MODULE_USAGE(
         "sink=<sink to connect to> "
         "adjust_time=<how often to readjust rates in s> "
         "latency_msec=<latency in ms> "
+        "max_latency_msec=<maximum latency in ms> "
+        "fast_adjust_threshold_msec=<threshold for fast adjust in ms> "
         "format=<sample format> "
         "rate=<sample rate> "
         "channels=<number of channels> "
@@ -89,7 +91,9 @@ struct userdata {
 
     /* Values from command line configuration */
     pa_usec_t latency;
+    pa_usec_t max_latency;
     pa_usec_t adjust_time;
+    pa_usec_t fast_adjust_threshold;
 
     /* Latency boundaries and current values */
     pa_usec_t min_source_latency;
@@ -158,6 +162,8 @@ static const char* const valid_modargs[] = {
     "sink",
     "adjust_time",
     "latency_msec",
+    "max_latency_msec",
+    "fast_adjust_threshold_msec",
     "format",
     "rate",
     "channels",
@@ -177,6 +183,7 @@ enum {
     SINK_INPUT_MESSAGE_SOURCE_CHANGED,
     SINK_INPUT_MESSAGE_SET_EFFECTIVE_SOURCE_LATENCY,
     SINK_INPUT_MESSAGE_UPDATE_MIN_LATENCY,
+    SINK_INPUT_MESSAGE_FAST_ADJUST,
 };
 
 enum {
@@ -214,7 +221,7 @@ static void teardown(struct userdata *u) {
      * to the sink input. Also, we need to ensure that new messages won't be
      * written to the queue after we have emptied it.
      *
-     * Emptying the queue can be done in the state_changed() callback of the
+     * Emptying the queue can be done in the state_change() callback of the
      * sink input, when the new state is "unlinked".
      *
      * Preventing new messages from being written to the queue can be achieved
@@ -320,7 +327,7 @@ static void adjust_rates(struct userdata *u) {
     int32_t latency_difference;
     pa_usec_t current_buffer_latency, snapshot_delay;
     int64_t current_source_sink_latency, current_latency, latency_at_optimum_rate;
-    pa_usec_t final_latency, now;
+    pa_usec_t final_latency, now, time_passed;
 
     pa_assert(u);
     pa_assert_ctl_context();
@@ -332,10 +339,20 @@ static void adjust_rates(struct userdata *u) {
 
     /* If we are seeing underruns then the latency is too small */
     if (u->underrun_counter > 2) {
-        u->underrun_latency_limit = PA_MAX(u->latency, u->minimum_latency) + 5 * PA_USEC_PER_MSEC;
-        u->underrun_latency_limit = PA_CLIP_SUB((int64_t)u->underrun_latency_limit, u->sink_latency_offset + u->source_latency_offset);
+        pa_usec_t target_latency;
+
+        target_latency = PA_MAX(u->latency, u->minimum_latency) + 5 * PA_USEC_PER_MSEC;
+
+        if (u->max_latency == 0 || target_latency < u->max_latency) {
+            u->underrun_latency_limit = PA_CLIP_SUB((int64_t)target_latency, u->sink_latency_offset + u->source_latency_offset);
+            pa_log_warn("Too many underruns, increasing latency to %0.2f ms", (double)target_latency / PA_USEC_PER_MSEC);
+        } else {
+            u->underrun_latency_limit = PA_CLIP_SUB((int64_t)u->max_latency, u->sink_latency_offset + u->source_latency_offset);
+            pa_log_warn("Too many underruns, configured maximum latency of %0.2f ms is reached", (double)u->max_latency / PA_USEC_PER_MSEC);
+            pa_log_warn("Consider increasing the max_latency_msec");
+        }
+
         update_minimum_latency(u, u->sink_input->sink, false);
-        pa_log_warn("Too many underruns, increasing latency to %0.2f ms", (double)u->minimum_latency / PA_USEC_PER_MSEC);
         u->underrun_counter = 0;
     }
 
@@ -345,16 +362,20 @@ static void adjust_rates(struct userdata *u) {
         pa_log_info("Underrun counter: %u", u->underrun_counter);
     }
 
-    /* Calculate real adjust time */
+    /* Calculate real adjust time if source or sink did not change and if the system has
+     * not been suspended. If the time between two calls is more than 5% longer than the
+     * configured adjust time, we assume that the system has been sleeping and skip the
+     * calculation for this iteration. */
     now = pa_rtclock_now();
-    if (!u->source_sink_changed) {
+    time_passed = now - u->adjust_time_stamp;
+    if (!u->source_sink_changed && time_passed < u->adjust_time * 1.05) {
         u->adjust_counter++;
-        u->real_adjust_time_sum += now - u->adjust_time_stamp;
+        u->real_adjust_time_sum += time_passed;
         u->real_adjust_time = u->real_adjust_time_sum / u->adjust_counter;
     }
     u->adjust_time_stamp = now;
 
-    /* Rates and latencies*/
+    /* Rates and latencies */
     old_rate = u->sink_input->sample_spec.rate;
     base_rate = u->source_output->sample_spec.rate;
 
@@ -384,6 +405,17 @@ static void adjust_rates(struct userdata *u) {
                 (double) current_latency / PA_USEC_PER_MSEC);
 
     pa_log_debug("Loopback latency at base rate is %0.2f ms", (double)latency_at_optimum_rate / PA_USEC_PER_MSEC);
+
+    /* Drop or insert samples if fast_adjust_threshold_msec was specified and the latency difference is too large. */
+    if (u->fast_adjust_threshold > 0 && abs(latency_difference) > u->fast_adjust_threshold) {
+        pa_log_debug ("Latency difference larger than %" PRIu64 " msec, skipping or inserting samples.", u->fast_adjust_threshold / PA_USEC_PER_MSEC);
+
+        pa_asyncmsgq_send(u->sink_input->sink->asyncmsgq, PA_MSGOBJECT(u->sink_input), SINK_INPUT_MESSAGE_FAST_ADJUST, NULL, current_source_sink_latency, NULL);
+
+        /* Skip real adjust time calculation on next iteration. */
+        u->source_sink_changed = true;
+        return;
+    }
 
     /* Calculate new rate */
     new_rate = rate_controller(base_rate, u->real_adjust_time, latency_difference);
@@ -422,7 +454,7 @@ static void enable_adjust_timer(struct userdata *u, bool enable) {
         if (u->time_event)
             u->core->mainloop->time_free(u->time_event);
 
-        u->time_event = pa_core_rttime_new(u->module->core, pa_rtclock_now() + 333 * PA_USEC_PER_MSEC, time_callback, u);
+        u->time_event = pa_core_rttime_new(u->core, pa_rtclock_now() + 333 * PA_USEC_PER_MSEC, time_callback, u);
     } else {
         if (!u->time_event)
             return;
@@ -514,13 +546,13 @@ static void memblockq_adjust(struct userdata *u, int64_t latency_offset_usec, bo
     if (current_memblockq_length > requested_memblockq_length) {
         /* Drop audio from queue */
         buffer_correction = current_memblockq_length - requested_memblockq_length;
-        pa_log_info("Dropping %lu usec of audio from queue", pa_bytes_to_usec(buffer_correction, &u->sink_input->sample_spec));
+        pa_log_info("Dropping %" PRIu64 " usec of audio from queue", pa_bytes_to_usec(buffer_correction, &u->sink_input->sample_spec));
         pa_memblockq_drop(u->memblockq, buffer_correction);
 
     } else if (current_memblockq_length < requested_memblockq_length && allow_push) {
         /* Add silence to queue */
         buffer_correction = requested_memblockq_length - current_memblockq_length;
-        pa_log_info("Adding %lu usec of silence to queue", pa_bytes_to_usec(buffer_correction, &u->sink_input->sample_spec));
+        pa_log_info("Adding %" PRIu64 " usec of silence to queue", pa_bytes_to_usec(buffer_correction, &u->sink_input->sample_spec));
         pa_memblockq_seek(u->memblockq, (int64_t)buffer_correction, PA_SEEK_RELATIVE, true);
     }
 }
@@ -708,7 +740,7 @@ static void source_output_moving_cb(pa_source_output *o, pa_source *dest) {
 
     /* Uncork the sink input unless the destination is suspended for other
      * reasons than idle. */
-    if (pa_source_get_state(dest) == PA_SOURCE_SUSPENDED)
+    if (dest->state == PA_SOURCE_SUSPENDED)
         pa_sink_input_cork(u->sink_input, (dest->suspend_cause != PA_SUSPEND_IDLE));
     else
         pa_sink_input_cork(u->sink_input, false);
@@ -736,12 +768,19 @@ static void source_output_moving_cb(pa_source_output *o, pa_source *dest) {
 }
 
 /* Called from main thread */
-static void source_output_suspend_cb(pa_source_output *o, bool suspended) {
+static void source_output_suspend_cb(pa_source_output *o, pa_source_state_t old_state, pa_suspend_cause_t old_suspend_cause) {
     struct userdata *u;
+    bool suspended;
 
     pa_source_output_assert_ref(o);
     pa_assert_ctl_context();
     pa_assert_se(u = o->userdata);
+
+    /* State has not changed, nothing to do */
+    if (old_state == o->source->state)
+        return;
+
+    suspended = (o->source->state == PA_SOURCE_SUSPENDED);
 
     /* If the source has been suspended, we need to handle this like
      * a source change when the source is resumed */
@@ -958,6 +997,12 @@ static int sink_input_process_msg_cb(pa_msgobject *obj, int code, void *data, in
             u->output_thread_info.minimum_latency = (pa_usec_t)offset;
 
             return 0;
+
+        case SINK_INPUT_MESSAGE_FAST_ADJUST:
+
+            memblockq_adjust(u, offset, true);
+
+            return 0;
     }
 
     return pa_sink_input_process_msg(obj, code, data, offset, chunk);
@@ -1092,7 +1137,7 @@ static void sink_input_moving_cb(pa_sink_input *i, pa_sink *dest) {
 
     /* Uncork the source output unless the destination is suspended for other
      * reasons than idle */
-    if (pa_sink_get_state(dest) == PA_SINK_SUSPENDED)
+    if (dest->state == PA_SINK_SUSPENDED)
         pa_source_output_cork(u->source_output, (dest->suspend_cause != PA_SUSPEND_IDLE));
     else
         pa_source_output_cork(u->source_output, false);
@@ -1129,12 +1174,19 @@ static bool sink_input_may_move_to_cb(pa_sink_input *i, pa_sink *dest) {
 }
 
 /* Called from main thread */
-static void sink_input_suspend_cb(pa_sink_input *i, bool suspended) {
+static void sink_input_suspend_cb(pa_sink_input *i, pa_sink_state_t old_state, pa_suspend_cause_t old_suspend_cause) {
     struct userdata *u;
+    bool suspended;
 
     pa_sink_input_assert_ref(i);
     pa_assert_ctl_context();
     pa_assert_se(u = i->userdata);
+
+    /* State has not changed, nothing to do */
+    if (old_state == i->sink->state)
+        return;
+
+    suspended = (i->sink->state == PA_SINK_SUSPENDED);
 
     /* If the sink has been suspended, we need to handle this like
      * a sink change when the sink is resumed. Because the sink
@@ -1259,6 +1311,8 @@ int pa__init(pa_module *m) {
     pa_source_output_new_data source_output_data;
     bool source_dont_move;
     uint32_t latency_msec;
+    uint32_t max_latency_msec;
+    uint32_t fast_adjust_threshold;
     pa_sample_spec ss;
     pa_channel_map map;
     bool format_set = false;
@@ -1343,10 +1397,28 @@ int pa__init(pa_module *m) {
         goto fail;
     }
 
+    fast_adjust_threshold = 0;
+    if (pa_modargs_get_value_u32(ma, "fast_adjust_threshold_msec", &fast_adjust_threshold) < 0 || (fast_adjust_threshold != 0 && fast_adjust_threshold < 100)) {
+        pa_log("Invalid fast adjust threshold specification");
+        goto fail;
+    }
+
+    max_latency_msec = 0;
+    if (pa_modargs_get_value_u32(ma, "max_latency_msec", &max_latency_msec) < 0) {
+        pa_log("Invalid maximum latency specification");
+        goto fail;
+    }
+
+    if (max_latency_msec > 0 && max_latency_msec < latency_msec) {
+        pa_log_warn("Configured maximum latency is smaller than latency, using latency instead");
+        max_latency_msec = latency_msec;
+    }
+
     m->userdata = u = pa_xnew0(struct userdata, 1);
     u->core = m->core;
     u->module = m;
     u->latency = (pa_usec_t) latency_msec * PA_USEC_PER_MSEC;
+    u->max_latency = (pa_usec_t) max_latency_msec * PA_USEC_PER_MSEC;
     u->output_thread_info.pop_called = false;
     u->output_thread_info.pop_adjust = false;
     u->output_thread_info.push_called = false;
@@ -1356,6 +1428,7 @@ int pa__init(pa_module *m) {
     u->source_sink_changed = true;
     u->real_adjust_time_sum = 0;
     u->adjust_counter = 0;
+    u->fast_adjust_threshold = fast_adjust_threshold * PA_USEC_PER_MSEC;
 
     adjust_time_sec = DEFAULT_ADJUST_TIME_USEC / PA_USEC_PER_SEC;
     if (pa_modargs_get_value_u32(ma, "adjust_time", &adjust_time_sec) < 0) {
@@ -1546,10 +1619,10 @@ int pa__init(pa_module *m) {
     pa_sink_input_put(u->sink_input);
     pa_source_output_put(u->source_output);
 
-    if (pa_source_get_state(u->source_output->source) != PA_SOURCE_SUSPENDED)
+    if (u->source_output->source->state != PA_SOURCE_SUSPENDED)
         pa_sink_input_cork(u->sink_input, false);
 
-    if (pa_sink_get_state(u->sink_input->sink) != PA_SINK_SUSPENDED)
+    if (u->sink_input->sink->state != PA_SINK_SUSPENDED)
         pa_source_output_cork(u->source_output, false);
 
     update_adjust_timer(u);

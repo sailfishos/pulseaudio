@@ -84,7 +84,11 @@ bool pa_module_exists(const char *name) {
     state = NULL;
     if (PA_UNLIKELY(pa_run_from_build_tree())) {
         while ((p = pa_split(paths, ":", &state))) {
+#ifdef MESON_BUILD
+            pathname = pa_sprintf_malloc("%s" PA_PATH_SEP "src" PA_PATH_SEP "modules" PA_PATH_SEP "%s" PA_SOEXT, p, n);
+#else
             pathname = pa_sprintf_malloc("%s" PA_PATH_SEP ".libs" PA_PATH_SEP "%s" PA_SOEXT, p, n);
+#endif
             result = access(pathname, F_OK) == 0 ? true : false;
             pa_log_debug("Checking for existence of '%s': %s", pathname, result ? "success" : "failure");
             pa_xfree(pathname);
@@ -112,7 +116,7 @@ int pa_module_load(pa_module** module, pa_core *c, const char *name, const char 
     bool (*load_once)(void);
     const char* (*get_deprecated)(void);
     pa_modinfo *mi;
-    int errcode;
+    int errcode, rval;
 
     pa_assert(module);
     pa_assert(c);
@@ -184,7 +188,11 @@ int pa_module_load(pa_module** module, pa_core *c, const char *name, const char 
     pa_assert_se(pa_idxset_put(c->modules, m, &m->index) >= 0);
     pa_assert(m->index != PA_IDXSET_INVALID);
 
-    if (m->init(m) < 0) {
+    if ((rval = m->init(m)) < 0) {
+        if (rval == -PA_MODULE_ERR_SKIP) {
+            errcode = -PA_ERR_NOENTITY;
+            goto fail;
+        }
         pa_log_error("Failed to load module \"%s\" (argument: \"%s\"): initialization failed.", name, argument ? argument : "");
         errcode = -PA_ERR_IO;
         goto fail;

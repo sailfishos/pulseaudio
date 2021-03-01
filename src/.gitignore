@@ -33,6 +33,7 @@ alsa-mixer-path-test
 alsa-time-test
 asyncmsgq-test
 asyncq-test
+atomic-test
 channelmap-test
 close-test
 connect-stress
@@ -48,6 +49,7 @@ flist-test
 format-test
 get-binary-name-test
 gtk-test
+hashmap-test
 hook-list-test
 interpol-test
 ipacl-test
@@ -64,6 +66,7 @@ mix-test
 once-test
 pacat-simple
 parec-simple
+passthrough-test
 proplist-test
 queue-test
 remix-test

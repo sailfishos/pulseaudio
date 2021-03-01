@@ -387,7 +387,7 @@ static int sink_set_state_in_main_thread_cb(pa_sink *s, pa_sink_state_t state, p
     pa_assert_se(u = s->userdata);
 
     if (!PA_SINK_IS_LINKED(state) ||
-            !PA_SINK_INPUT_IS_LINKED(pa_sink_input_get_state(u->sink_input)))
+            !PA_SINK_INPUT_IS_LINKED(u->sink_input->state))
         return 0;
 
     pa_sink_input_cork(u->sink_input, state == PA_SINK_SUSPENDED);
@@ -403,7 +403,7 @@ static int sink_set_state_in_io_thread_cb(pa_sink *s, pa_sink_state_t new_state,
 
     /* When set to running or idle for the first time, request a rewind
      * of the master sink to make sure we are heard immediately */
-    if ((new_state == PA_SINK_IDLE || new_state == PA_SINK_RUNNING) && u->sink->thread_info.state == PA_SINK_INIT) {
+    if (PA_SINK_IS_OPENED(new_state) && s->thread_info.state == PA_SINK_INIT) {
         pa_log_debug("Requesting rewind due to state change.");
         pa_sink_input_request_rewind(u->sink_input, 0, false, true, true);
     }
@@ -452,8 +452,8 @@ static void sink_set_mute_cb(pa_sink *s) {
     pa_sink_assert_ref(s);
     pa_assert_se(u = s->userdata);
 
-    if (!PA_SINK_IS_LINKED(pa_sink_get_state(s)) ||
-            !PA_SINK_INPUT_IS_LINKED(pa_sink_input_get_state(u->sink_input)))
+    if (!PA_SINK_IS_LINKED(s->state) ||
+            !PA_SINK_INPUT_IS_LINKED(u->sink_input->state))
         return;
 
     pa_sink_input_set_mute(u->sink_input, s->muted, s->save_muted);
@@ -705,6 +705,22 @@ static void sink_input_mute_changed_cb(pa_sink_input *i) {
     pa_assert_se(u = i->userdata);
 
     pa_sink_mute_changed(u->sink, i->muted);
+}
+
+/* Called from main context */
+static void sink_input_suspend_cb(pa_sink_input *i, pa_sink_state_t old_state, pa_suspend_cause_t old_suspend_cause) {
+    struct userdata *u;
+
+    pa_sink_input_assert_ref(i);
+    pa_assert_se(u = i->userdata);
+
+    if (!PA_SINK_IS_LINKED(u->sink->state))
+        return;
+
+    if (i->sink->state != PA_SINK_SUSPENDED || i->sink->suspend_cause == PA_SUSPEND_IDLE)
+        pa_sink_suspend(u->sink, false, PA_SUSPEND_UNAVAILABLE);
+    else
+        pa_sink_suspend(u->sink, true, PA_SUSPEND_UNAVAILABLE);
 }
 
 static int parse_control_parameters(struct userdata *u, const char *cdata, double *read_values, bool *use_default) {
@@ -1346,6 +1362,7 @@ int pa__init(pa_module*m) {
     u->sink_input->may_move_to = sink_input_may_move_to_cb;
     u->sink_input->moving = sink_input_moving_cb;
     u->sink_input->mute_changed = sink_input_mute_changed_cb;
+    u->sink_input->suspend = sink_input_suspend_cb;
     u->sink_input->userdata = u;
 
     u->sink->input_to_master = u->sink_input;

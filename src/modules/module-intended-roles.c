@@ -99,7 +99,7 @@ static pa_hook_result_t sink_input_new_hook_callback(pa_core *c, pa_sink_input_n
         if (s == c->default_sink)
             continue;
 
-        if (!PA_SINK_IS_LINKED(pa_sink_get_state(s)))
+        if (!PA_SINK_IS_LINKED(s->state))
             continue;
 
         if (role_match(s->proplist, role) && pa_sink_input_new_data_set_sink(new_data, s, false, false))
@@ -147,7 +147,7 @@ static pa_hook_result_t source_output_new_hook_callback(pa_core *c, pa_source_ou
         if (s == c->default_source)
             continue;
 
-        if (!PA_SOURCE_IS_LINKED(pa_source_get_state(s)))
+        if (!PA_SOURCE_IS_LINKED(s->state))
             continue;
 
         /* @todo: favour the highest priority device, not the first one we find? */
@@ -175,18 +175,18 @@ static pa_hook_result_t sink_put_hook_callback(pa_core *c, pa_sink *sink, struct
         if (si->sink == sink)
             continue;
 
-        if (si->save_sink)
-            continue;
-
         /* Skip this if it is already in the process of being moved
          * anyway */
         if (!si->sink)
             continue;
 
+        if (pa_safe_streq(si->sink->name, si->preferred_sink))
+            continue;
+
         /* It might happen that a stream and a sink are set up at the
            same time, in which case we want to make sure we don't
            interfere with that */
-        if (!PA_SINK_INPUT_IS_LINKED(pa_sink_input_get_state(si)))
+        if (!PA_SINK_INPUT_IS_LINKED(si->state))
             continue;
 
         if (!(role = pa_proplist_gets(si->proplist, PA_PROP_MEDIA_ROLE)))
@@ -222,9 +222,6 @@ static pa_hook_result_t source_put_hook_callback(pa_core *c, pa_source *source, 
         if (so->source == source)
             continue;
 
-        if (so->save_source)
-            continue;
-
         if (so->direct_on_input)
             continue;
 
@@ -233,10 +230,13 @@ static pa_hook_result_t source_put_hook_callback(pa_core *c, pa_source *source, 
         if (!so->source)
             continue;
 
+        if (pa_safe_streq(so->source->name, so->preferred_source))
+            continue;
+
         /* It might happen that a stream and a source are set up at the
            same time, in which case we want to make sure we don't
            interfere with that */
-        if (!PA_SOURCE_OUTPUT_IS_LINKED(pa_source_output_get_state(so)))
+        if (!PA_SOURCE_OUTPUT_IS_LINKED(so->state))
             continue;
 
         if (!(role = pa_proplist_gets(so->proplist, PA_PROP_MEDIA_ROLE)))
@@ -293,7 +293,7 @@ static pa_hook_result_t sink_unlink_hook_callback(pa_core *c, pa_sink *sink, str
             if (d == c->default_sink || d == sink)
                 continue;
 
-            if (!PA_SINK_IS_LINKED(pa_sink_get_state(d)))
+            if (!PA_SINK_IS_LINKED(d->state))
                 continue;
 
             if (role_match(d->proplist, role))
@@ -349,7 +349,7 @@ static pa_hook_result_t source_unlink_hook_callback(pa_core *c, pa_source *sourc
             if (d == c->default_source || d == source)
                 continue;
 
-            if (!PA_SOURCE_IS_LINKED(pa_source_get_state(d)))
+            if (!PA_SOURCE_IS_LINKED(d->state))
                 continue;
 
             /* If moving from a monitor, move to another monitor */
@@ -398,7 +398,7 @@ int pa__init(pa_module*m) {
     }
 
     if (on_rescue) {
-        /* A little bit later than module-stream-restore, a little bit earlier than module-rescue-streams, ... */
+        /* A little bit later than module-stream-restore, ... */
         u->sink_unlink_hook_slot = pa_hook_connect(&m->core->hooks[PA_CORE_HOOK_SINK_UNLINK], PA_HOOK_LATE+10, (pa_hook_cb_t) sink_unlink_hook_callback, u);
         u->source_unlink_hook_slot = pa_hook_connect(&m->core->hooks[PA_CORE_HOOK_SOURCE_UNLINK], PA_HOOK_LATE+10, (pa_hook_cb_t) source_unlink_hook_callback, u);
     }

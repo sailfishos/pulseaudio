@@ -286,6 +286,14 @@ static pa_sample_format_t choose_work_format(
                 work_format = a;
                 break;
             }
+            /* If both input and output are using S32NE and we don't
+             * need any resampling we can use S32NE directly, avoiding
+             * converting back and forth between S32NE and
+             * FLOAT32NE. */
+            if ((a == PA_SAMPLE_S32NE) && (b == PA_SAMPLE_S32NE)) {
+                work_format = PA_SAMPLE_S32NE;
+                break;
+            }
             /* Else fall through */
         case PA_RESAMPLER_PEAKS:
             /* PEAKS, COPY and TRIVIAL do not benefit from increased
@@ -914,6 +922,8 @@ static void setup_remap(const pa_resampler *r, pa_remap_t *m, bool *lfe_remixed)
          * The algorithm works basically like this:
          *
          * 1) Connect all channels with matching names.
+         *    This also includes fixing confusion between "5.1" and
+         *    "5.1 (Side)" layouts, done by mpv.
          *
          * 2) Mono Handling:
          *    S:Mono: See setup_oc_mono_map().
@@ -1007,6 +1017,26 @@ static void setup_remap(const pa_resampler *r, pa_remap_t *m, bool *lfe_remixed)
             }
 
             if (!oc_connected) {
+                /* Maybe it is due to 5.1 rear/side confustion? */
+                for (ic = 0; ic < n_ic; ic++) {
+                    pa_channel_position_t a = r->i_cm.map[ic];
+                    if (ic_connected[ic])
+                        continue;
+
+                    if ((a == PA_CHANNEL_POSITION_REAR_LEFT && b == PA_CHANNEL_POSITION_SIDE_LEFT) ||
+                        (a == PA_CHANNEL_POSITION_SIDE_LEFT && b == PA_CHANNEL_POSITION_REAR_LEFT) ||
+                        (a == PA_CHANNEL_POSITION_REAR_RIGHT && b == PA_CHANNEL_POSITION_SIDE_RIGHT) ||
+                        (a == PA_CHANNEL_POSITION_SIDE_RIGHT && b == PA_CHANNEL_POSITION_REAR_RIGHT)) {
+
+                        m->map_table_f[oc][ic] = 1.0f;
+
+                        oc_connected = true;
+                        ic_connected[ic] = true;
+                    }
+                }
+            }
+
+            if (!oc_connected) {
                 /* Try to find matching input ports for this output port */
 
                 if (on_left(b) && !(r->flags & PA_RESAMPLER_NO_FILL_SINK)) {
@@ -1069,7 +1099,7 @@ static void setup_remap(const pa_resampler *r, pa_remap_t *m, bool *lfe_remixed)
                      * right input channel. Something is really wrong in this
                      * case anyway. */
 
-                } else if (on_lfe(b) && !(r->flags & PA_RESAMPLER_NO_LFE)) {
+                } else if (on_lfe(b) && (r->flags & PA_RESAMPLER_PRODUCE_LFE)) {
 
                     /* We are not connected and an LFE. Let's average all
                      * channels for LFE. */
@@ -1120,7 +1150,7 @@ static void setup_remap(const pa_resampler *r, pa_remap_t *m, bool *lfe_remixed)
                     m->map_table_f[oc][ic] = (1.f/9.f) / (float) ic_unconnected_center;
                     ic_unconnected_center_mixed_in = true;
 
-                } else if (on_lfe(a) && !(r->flags & PA_RESAMPLER_NO_LFE))
+                } else if (on_lfe(a) && (r->flags & PA_RESAMPLER_CONSUME_LFE))
                     m->map_table_f[oc][ic] = .375f / (float) ic_unconnected_lfe;
             }
         }
