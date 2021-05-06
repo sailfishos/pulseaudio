@@ -22,6 +22,7 @@ Requires(pre): /usr/bin/getent
 Requires(pre): /usr/sbin/groupadd
 Requires(pre): /usr/sbin/useradd
 
+BuildRequires:  meson
 BuildRequires:  pkgconfig(alsa) >= 1.0.24
 BuildRequires:  pkgconfig(dbus-1) >= 1.4.12
 BuildRequires:  pkgconfig(glib-2.0) >= 2.4.0
@@ -75,28 +76,31 @@ Man pages for %{name}.
 
 %build
 echo "%{version}" > .tarball-version
-NOCONFIGURE=1 ./bootstrap.sh
 
 %ifarch %{arm}
 export CFLAGS="$CFLAGS -mfpu=neon"
 export CXXFLAGS="$CXXFLAGS -mfpu=neon"
 %endif
 
-%configure --disable-static \
-           --disable-x11 \
-%ifarch %{arm} || %{aarch64}
-           --enable-neon-opt \
-%endif
-           --disable-openssl \
-           --disable-gconf \
-           --disable-esound \
-           --with-database=simple
+%meson \
+  -Davahi=disabled \
+  -Ddatabase=simple \
+  -Ddoxygen=false \
+  -Dfftw=disabled \
+  -Dgtk=disabled \
+  -Djack=disabled \
+  -Dlirc=disabled \
+  -Dopenssl=disabled \
+  -Dsoxr=disabled \
+  -Dtests=false \
+  -Dwebrtc-aec=disabled \
+  -Dx11=disabled
 
-make %{?_smp_mflags}
+%meson_build
 
 %install
 rm -rf %{buildroot}
-%make_install
+%meson_install
 
 install -d %{buildroot}/etc/security/limits.d
 cp -a %{SOURCE1} %{buildroot}/etc/security/limits.d
