@@ -9,8 +9,8 @@ pa_version_str = meson.project_version()
 # split out suffixes when there are commits since the last tag
 # (e.g.: v11.99.1-3-gad14bdb24 -> v11.99.1)
 version_split = pa_version_str.split('-')[0].split('.')
-pa_version_major = version_split[0].split('v')[0]
-pa_version_minor = version_split[1]
+pa_version_major = version_split[0].split('v')[0].split('+')[0]
+pa_version_minor = version_split[1].split('+')[0]
 if version_split.length() > 2
   pa_version_micro = version_split[2]
 else
@@ -721,9 +721,11 @@ pc_cdata = configuration_data()
 pc_cdata.set('prefix', prefix)
 pc_cdata.set('exec_prefix', prefix)
 pc_cdata.set('libdir', libdir)
+pc_cdata.set('libexecdir', libexecdir)
 pc_cdata.set('includedir', includedir)
 pc_cdata.set('modlibexecdir', modlibexecdir)
 pc_cdata.set('PACKAGE_VERSION', pa_version_str)
+pc_cdata.set('PA_DEFAULT_CONFIG_DIR', pulsesysconfdir)
 pc_cdata.set('PA_MAJORMINOR', pa_version_major_minor)
 # FIXME: the line below is wrong. Currently the meson thread dep lacks documentation,
 # and doesn't allow introspection, ie. none of get_pkgconfig_variable() or
@@ -734,6 +736,7 @@ pc_cdata.set('PTHREAD_LIBS', '-pthread')
 pc_files = [
   'libpulse.pc',
   'libpulse-simple.pc',
+  'pulsecore.pc',
 ]
 
 if glib_dep.found()
