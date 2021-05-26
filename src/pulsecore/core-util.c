@@ -326,9 +326,9 @@ again:
 #ifdef HAVE_FCHOWN
     if (uid == (uid_t) -1)
         uid = getuid();
-    if (gid == (gid_t) -1)
+    if ((gid == (gid_t) -1) && (m & 0070))
         gid = getgid();
-    if (((st.st_uid != uid) || (st.st_gid != gid)) && fchown(fd, uid, gid) < 0) {
+    if (((st.st_uid != uid) || ((gid != (gid_t) -1) && (st.st_gid != gid))) && fchown(fd, uid, gid) < 0) {
         pa_assert_se(pa_close(fd) >= 0);
         goto fail;
     }
