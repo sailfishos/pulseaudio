@@ -30,6 +30,8 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <signal.h>
+#include <stdint.h>
+#include <inttypes.h>
 
 #ifdef HAVE_SYS_WAIT_H
 #include <sys/wait.h>
@@ -125,6 +127,62 @@ static void reset_callbacks(pa_context *c) {
     c->ext_stream_restore.userdata = NULL;
 }
 
+static void policy_id_update_proplist(pa_proplist *proplist) {
+    char path[256];
+    char line[1024];
+    FILE *f;
+
+    pa_assert(proplist);
+
+    if (pa_proplist_contains(proplist, PA_PROP_POLICY_APPLICATION_ID))
+        return;
+
+    pid_t p = getpid();
+    pa_snprintf(path, sizeof(path), "/proc/%" PRIdMAX "/stat", (intmax_t) p);
+    if (!(f = fopen(path, "r"))) {
+        pa_log("policy_id_update_proplist: can't open %s", path);
+        return;
+    }
+
+    while (fgets(line, sizeof(line), f)) {
+        char *start = line;
+        int field = 1;
+        char *token;
+
+        while ((token = strsep(&start, " "))) {
+            if (field == 22) {
+                int64_t value = 0;
+                char *endptr = NULL;
+                char *id = NULL;
+
+                errno = 0;
+                value = strtoll(token, &endptr, 10);
+
+                if ((errno == ERANGE && (value == LLONG_MAX || value == LLONG_MIN))
+                        || (errno != 0 && value == 0)) {
+
+                    perror("policy_id_update_proplist: strtoll");
+                    goto done;
+                }
+
+                if (endptr == token) {
+                    pa_log("policy_id_update_proplist: no digits were found");
+                    goto done;
+                }
+
+                id = pa_sprintf_malloc("%" PRIx64, value);
+                pa_proplist_sets(proplist, PA_PROP_POLICY_APPLICATION_ID, id);
+                pa_xfree(id);
+                break;
+            }
+            field++;
+        }
+    }
+
+done:
+    fclose(f);
+}
+
 pa_context *pa_context_new_with_proplist(pa_mainloop_api *mainloop, const char *name, const pa_proplist *p) {
     pa_context *c;
     pa_mem_type_t type;
@@ -147,6 +205,9 @@ pa_context *pa_context_new_with_proplist(pa_mainloop_api *mainloop, const char *
 
     if (name)
         pa_proplist_sets(c->proplist, PA_PROP_APPLICATION_NAME, name);
+
+    /* Sailfish policy extension */
+    policy_id_update_proplist(c->proplist);
 
 #ifdef HAVE_DBUS
     c->system_bus = c->session_bus = NULL;
