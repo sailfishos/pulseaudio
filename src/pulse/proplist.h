@@ -267,6 +267,9 @@ PA_C_DECL_BEGIN
 /** For PCM formats: the channel map of the stream as returned by pa_channel_map_snprint() \since 1.0 */
 #define PA_PROP_FORMAT_CHANNEL_MAP             "format.channel_map"
 
+/** Sailfish policy extensions \since 14.2 */
+#define PA_PROP_POLICY_APPLICATION_ID          "policy.application.id"
+
 /** A property list object. Basically a dictionary with ASCII strings
  * as keys and arbitrary data as values. \since 0.9.11 */
 typedef struct pa_proplist pa_proplist;
