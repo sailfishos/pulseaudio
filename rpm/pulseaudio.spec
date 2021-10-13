@@ -32,13 +32,13 @@ BuildRequires:  pkgconfig(sndfile) >= 1.0.20
 BuildRequires:  pkgconfig(speexdsp) >= 1.2
 BuildRequires:  pkgconfig(atomic_ops)
 BuildRequires:  pkgconfig(sbc) >= 1.0
+BuildRequires:  pkgconfig(systemd)
+BuildRequires:  pkgconfig(bluez5) >= 5.0
 BuildRequires:  intltool
 BuildRequires:  libcap-devel
 BuildRequires:  libtool >= 2.4
 BuildRequires:  libtool-ltdl-devel
 BuildRequires:  fdupes
-BuildRequires:  systemd-devel
-BuildRequires:  pkgconfig(bluez5) >= 5.0
 
 %description
 PulseAudio is a layer between audio devices and applications. It removes
