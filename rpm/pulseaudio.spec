@@ -33,7 +33,7 @@ BuildRequires:  pkgconfig(speexdsp) >= 1.2
 BuildRequires:  pkgconfig(atomic_ops)
 BuildRequires:  pkgconfig(sbc) >= 1.0
 BuildRequires:  pkgconfig(systemd)
-BuildRequires:  pkgconfig(bluez5) >= 5.0
+BuildRequires:  pkgconfig(bluez) >= 5.0
 BuildRequires:  intltool
 BuildRequires:  libcap-devel
 BuildRequires:  libtool >= 2.4
