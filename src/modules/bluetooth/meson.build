@@ -2,6 +2,7 @@ libbluez5_util_sources = [
   'a2dp-codec-sbc.c',
   'a2dp-codec-util.c',
   'bluez5-util.c',
+  'droid-volume.c',
 ]
 
 libbluez5_util_headers = [
@@ -9,11 +10,13 @@ libbluez5_util_headers = [
   'a2dp-codecs.h',
   'a2dp-codec-util.h',
   'bluez5-util.h',
+  'droid-volume.h',
   'rtp.h',
 ]
 
 if get_option('bluez5-native-headset')
-  libbluez5_util_sources += [ 'backend-native.c' ]
+  libbluez5_util_sources += [ 'backend-native.c', 'native-call-control.c' ]
+  libbluez5_util_headers += [ 'native-call-control.h' ]
 endif
 
 if get_option('bluez5-ofono-headset')

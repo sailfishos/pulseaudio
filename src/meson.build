@@ -87,6 +87,9 @@ libpulsecommon_headers = [
   'pulse/timeval.h',
   'pulse/rtclock.h',
   'pulse/volume.h',
+]
+
+libpulsecommon_pulsecore_headers = [
   'pulsecore/atomic.h',
   'pulsecore/authkey.h',
   'pulsecore/conf-parser.h',
@@ -157,7 +160,7 @@ if dbus_dep.found()
     'pulsecore/dbus-util.c',
     'pulsecore/rtkit.c',
   ]
-  libpulsecommon_headers += [
+  libpulsecommon_pulsecore_headers += [
     'pulsecore/dbus-util.h',
     'pulsecore/rtkit.h',
   ]
@@ -170,6 +173,8 @@ if x11_dep.found()
   ]
   libpulsecommon_headers += [
     'pulse/client-conf-x11.h',
+  ]
+  libpulsecommon_pulsecore_headers += [
     'pulsecore/x11prop.h',
   ]
 endif
@@ -179,7 +184,7 @@ endif
 
 libpulsecommon = shared_library('pulsecommon-' + pa_version_major_minor,
   libpulsecommon_sources,
-  libpulsecommon_headers,
+  [libpulsecommon_headers, libpulsecommon_pulsecore_headers],
   include_directories : [configinc, topinc],
   c_args : [pa_c_args],
   link_args : [nodelete_link_args],
@@ -192,6 +197,12 @@ libpulsecommon = shared_library('pulsecommon-' + pa_version_major_minor,
   implicit_include_directories : false)
 
 libpulsecommon_dep = declare_dependency(link_with: libpulsecommon)
+
+
+install_headers(
+  libpulsecommon_pulsecore_headers,
+  subdir : 'pulsecore'
+)
 
 subdir('pulse')
 subdir('pulsecore')
