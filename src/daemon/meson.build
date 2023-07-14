@@ -163,7 +163,7 @@ if systemd_dep.found()
     input : 'systemd/user/pulseaudio-x11.service.in',
     output : 'pulseaudio-x11.service',
     configuration : sd_user_service_conf,
-    install : true,
+    install : x11_dep.found(),
     install_dir : systemduserunitdir,
   )
 
