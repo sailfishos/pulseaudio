@@ -23,6 +23,7 @@ Requires(pre): /usr/sbin/groupadd
 Requires(pre): /usr/sbin/useradd
 
 BuildRequires:  meson
+BuildRequires:  perl(XML::Parser)
 BuildRequires:  pkgconfig(alsa) >= 1.0.24
 BuildRequires:  pkgconfig(dbus-1) >= 1.4.12
 BuildRequires:  pkgconfig(glib-2.0) >= 2.4.0
@@ -35,7 +36,7 @@ BuildRequires:  pkgconfig(atomic_ops)
 BuildRequires:  pkgconfig(sbc) >= 1.0
 BuildRequires:  pkgconfig(systemd)
 BuildRequires:  pkgconfig(bluez) >= 5.0
-BuildRequires:  intltool
+BuildRequires:  gettext
 BuildRequires:  libcap-devel
 BuildRequires:  libtool >= 2.4
 BuildRequires:  libtool-ltdl-devel
