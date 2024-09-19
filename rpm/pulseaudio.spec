@@ -85,15 +85,21 @@ export CXXFLAGS="$CXXFLAGS -mfpu=neon"
 
 %meson \
   -Davahi=disabled \
+  -Dbluez5-gstreamer=disabled \
   -Ddatabase=simple \
   -Ddoxygen=false \
+  -Delogind=disabled \
   -Dfftw=disabled \
+  -Dgstreamer=disabled \
   -Dgtk=disabled \
   -Djack=disabled \
   -Dlirc=disabled \
+  -Dmodlibexecdir=%{_libdir}/pulse-%{pulseversion}/modules \
   -Dopenssl=disabled \
   -Dsoxr=disabled \
+  -Dtcpwrap=disabled \
   -Dtests=false \
+  -Dvalgrind=disabled \
   -Dwebrtc-aec=disabled \
   -Dx11=disabled
 
@@ -254,7 +260,6 @@ usermod -G pulse-access -a root || :
 %{_libdir}/pulse-%{pulseversion}/modules/module-udev-detect.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-virtual-sink.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-virtual-source.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-virtual-surround-sink.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-volume-restore.so
 %{_libdir}/pulseaudio/*.so
 %dir %{_datadir}/pulseaudio
@@ -270,7 +275,7 @@ usermod -G pulse-access -a root || :
 %{_datadir}/glib-2.0/schemas/org.freedesktop.pulseaudio.gschema.xml
 # system-wide mode
 %{_unitdir}/pulseaudio.service
-%config %{_sysconfdir}/dbus-1/system.d/pulseaudio-system.conf
+%{_datadir}/dbus-1/system.d/pulseaudio-system.conf
 
 %files devel
 %defattr(-,root,root,-)

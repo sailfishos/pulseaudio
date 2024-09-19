@@ -128,8 +128,8 @@ static pa_hook_result_t sink_input_volume_changed_cb(pa_core *c, pa_sink_input *
         pa_log_debug("%s: phone volume changes to %d -> %d",
                      pa_bluetooth_profile_to_string(control->transport->profile), v, gain);
 
-        if (control->transport->set_speaker_gain) {
-            control->transport->set_speaker_gain(control->transport, gain);
+        if (control->transport->set_sink_volume) {
+            control->transport->set_sink_volume(control->transport, gain);
         } else {
             headset_volume_set(control, (unsigned char) gain);
         }
@@ -272,13 +272,13 @@ done:
     return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 }
 
-static pa_hook_result_t transport_speaker_gain_changed_cb(pa_bluetooth_discovery *y, pa_bluetooth_transport *t, pa_droid_volume_control *control) {
+static pa_hook_result_t transport_sink_volume_changed_cb(pa_bluetooth_discovery *y, pa_bluetooth_transport *t, pa_droid_volume_control *control) {
 
     pa_assert(t);
     pa_assert(control);
 
     if (control->transport)
-        headset_volume_changed(control, t->speaker_gain);
+        headset_volume_changed(control, t->sink_volume);
 
     return PA_HOOK_OK;
 }
@@ -320,7 +320,7 @@ pa_droid_volume_control *pa_droid_volume_control_new(pa_core *c, pa_hook *speake
     }
 
     control->transport_speaker_gain_changed_slot =
-        pa_hook_connect(speaker_gain_changed_hook, PA_HOOK_NORMAL, (pa_hook_cb_t) transport_speaker_gain_changed_cb, control);
+        pa_hook_connect(speaker_gain_changed_hook, PA_HOOK_NORMAL, (pa_hook_cb_t) transport_sink_volume_changed_cb, control);
 
     return control;
 }

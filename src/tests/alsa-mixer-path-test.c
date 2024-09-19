@@ -17,12 +17,11 @@
  * Meson. */
 #ifndef MESON_BUILD
 
-/* This function was copied from alsa-mixer.c */
 static const char *get_default_paths_dir(void) {
     if (pa_run_from_build_tree())
         return PA_SRCDIR "/modules/alsa/mixer/paths/";
     else
-        return PA_ALSA_PATHS_DIR;
+        return PA_ALSA_DATA_DIR PA_PATH_SEP "paths/";
 }
 
 static pa_strlist *load_makefile() {
