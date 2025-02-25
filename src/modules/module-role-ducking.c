@@ -34,7 +34,6 @@ PA_MODULE_USAGE(
         "ducking_roles=<Comma(and slash) separated list of roles which will be ducked. Slash can divide the roles into groups>"
         "global=<Should we operate globally or only inside the same device?>"
         "volume=<Volume for the attenuated streams. Default: -20dB. If trigger_roles and ducking_roles are separated by slash, use slash for dividing volume group>"
-        "use_source_trigger=<Do we trigger a ducking by a role of source-output as well as sink-input's? Default: false>"
 );
 
 static const char* const valid_modargs[] = {
@@ -42,7 +41,6 @@ static const char* const valid_modargs[] = {
     "ducking_roles",
     "global",
     "volume",
-    "use_source_trigger",
     NULL
 };
 
