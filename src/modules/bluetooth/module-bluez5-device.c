@@ -2311,7 +2311,11 @@ static int add_card(struct userdata *u) {
         pa_hashmap_put(data.profiles, cp->name, cp);
     }
 
-    pa_assert(!pa_hashmap_isempty(data.profiles));
+    /* SFOS specific change
+     * At pulseaudio startup with bluetooth already connected the profile list
+     * seems to be always empty preventing pulseaudio startup but the profiles
+     * get added dynamically later so skip the assert */
+    //pa_assert(!pa_hashmap_isempty(data.profiles));
 
     cp = pa_card_profile_new("off", _("Off"), sizeof(pa_bluetooth_profile_t));
     cp->available = PA_AVAILABLE_YES;
