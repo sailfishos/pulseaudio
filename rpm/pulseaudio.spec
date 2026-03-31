@@ -1,13 +1,13 @@
 Name:       pulseaudio
 
-%define pulseversion 14.2
+%define pulseversion 17.0
 
 Summary:    General purpose sound server
 Version:    %{pulseversion}
 Release:    1
 License:    LGPLv2+
 URL:        http://pulseaudio.org
-Source0:    http://freedesktop.org/software/pulseaudio/releases/pulseaudio-%{version}.tar.xz
+Source0:    pulseaudio-%{version}.tar.xz
 Source1:    90-pulse.conf
 Source2:    pulseaudio.service
 Source3:    50-sfos.daemon.conf
@@ -76,7 +76,7 @@ Man pages for %{name}.
 %setup -q -n %{name}-%{version}
 
 %build
-echo "%{version}" > .tarball-version
+echo "%{pulseversion}" > .tarball-version
 
 %ifarch %{arm}
 export CFLAGS="$CFLAGS -mfpu=neon"
@@ -85,22 +85,27 @@ export CXXFLAGS="$CXXFLAGS -mfpu=neon"
 
 %meson \
   -Davahi=disabled \
+  -Dbluez5-gstreamer=disabled \
   -Ddatabase=simple \
   -Ddoxygen=false \
+  -Delogind=disabled \
   -Dfftw=disabled \
+  -Dgstreamer=disabled \
   -Dgtk=disabled \
   -Djack=disabled \
   -Dlirc=disabled \
+  -Dmodlibexecdir=%{_libdir}/pulse-%{pulseversion}/modules \
   -Dopenssl=disabled \
   -Dsoxr=disabled \
+  -Dtcpwrap=disabled \
   -Dtests=false \
+  -Dvalgrind=disabled \
   -Dwebrtc-aec=disabled \
   -Dx11=disabled
 
 %meson_build
 
 %install
-rm -rf %{buildroot}
 %meson_install
 
 install -d %{buildroot}/etc/security/limits.d
@@ -146,7 +151,6 @@ usermod -G pulse-access -a root || :
 %postun -p /sbin/ldconfig
 
 %files -f pulseaudio.lang
-%defattr(-,root,root,-)
 %license GPL LGPL LICENSE
 %config %{_sysconfdir}/pulse/*.conf
 %config %{_sysconfdir}/pulse/*.pa
@@ -254,7 +258,6 @@ usermod -G pulse-access -a root || :
 %{_libdir}/pulse-%{pulseversion}/modules/module-udev-detect.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-virtual-sink.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-virtual-source.so
-%{_libdir}/pulse-%{pulseversion}/modules/module-virtual-surround-sink.so
 %{_libdir}/pulse-%{pulseversion}/modules/module-volume-restore.so
 %{_libdir}/pulseaudio/*.so
 %dir %{_datadir}/pulseaudio
@@ -270,10 +273,9 @@ usermod -G pulse-access -a root || :
 %{_datadir}/glib-2.0/schemas/org.freedesktop.pulseaudio.gschema.xml
 # system-wide mode
 %{_unitdir}/pulseaudio.service
-%config %{_sysconfdir}/dbus-1/system.d/pulseaudio-system.conf
+%{_datadir}/dbus-1/system.d/pulseaudio-system.conf
 
 %files devel
-%defattr(-,root,root,-)
 %dir %{_includedir}/pulse
 %dir %{_includedir}/pulsecore
 %dir %{_includedir}/pulsecore/filter
@@ -292,7 +294,6 @@ usermod -G pulse-access -a root || :
 %{_datadir}/vala/vapi/*.vapi
 
 %files doc
-%defattr(-,root,root,-)
 %{_mandir}/man1/p*
 %{_mandir}/man5/*.*
 %{_docdir}/%{name}-%{version}
