@@ -36,6 +36,8 @@ BuildRequires:  pkgconfig(atomic_ops)
 BuildRequires:  pkgconfig(sbc) >= 1.0
 BuildRequires:  pkgconfig(systemd)
 BuildRequires:  pkgconfig(bluez) >= 5.0
+BuildRequires:  pkgconfig(gstreamer-1.0) >= 1.14
+BuildRequires:  pkgconfig(gstreamer-app-1.0) >= 1.14
 BuildRequires:  gettext
 BuildRequires:  libcap-devel
 BuildRequires:  libtool >= 2.4
@@ -85,7 +87,7 @@ export CXXFLAGS="$CXXFLAGS -mfpu=neon"
 
 %meson \
   -Davahi=disabled \
-  -Dbluez5-gstreamer=disabled \
+  -Dbluez5-gstreamer=enabled \
   -Ddatabase=simple \
   -Ddoxygen=false \
   -Delogind=disabled \
