@@ -13,6 +13,10 @@ Source2:    pulseaudio.service
 Source3:    50-sfos.daemon.conf
 Source4:    50-sfos.client.conf
 Source5:    pulseaudio-system.service
+
+Patch0: 0001-alsa-ucm-assert-1.patch
+Patch1: 0002-alsa-ucm-assert-2.patch
+
 Requires:   udev
 Requires:   libsbc >= 1.0
 Requires(post): /sbin/ldconfig
@@ -74,6 +78,8 @@ Man pages for %{name}.
 
 %prep
 %setup -q -n %{name}-%{version}
+%patch0 -p1
+%patch1 -p1
 
 %build
 echo "%{pulseversion}" > .tarball-version
